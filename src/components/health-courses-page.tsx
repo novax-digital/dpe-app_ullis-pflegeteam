@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { addMonths, addWeeks } from "date-fns";
 import {
   CalendarDays,
   Clock,
@@ -39,6 +40,14 @@ type Profile = Pick<
   "id" | "full_name" | "email"
 >;
 type CourseStatus = Database["public"]["Enums"]["course_status"];
+type ScheduleMode = "single" | "manual" | "recurring";
+type RecurrenceInterval = "weekly" | "monthly";
+
+type CourseDateRow = {
+  id: string;
+  start_time: string;
+  end_time: string;
+};
 
 const statusLabel: Record<CourseStatus, string> = {
   available: "Verfuegbar",
@@ -77,6 +86,30 @@ function nextCourseRange() {
   return {
     start_time: toDatetimeLocal(start),
     end_time: toDatetimeLocal(end),
+  };
+}
+
+function makeCourseDateRow(startTime: string, endTime: string): CourseDateRow {
+  return {
+    id: crypto.randomUUID(),
+    start_time: startTime,
+    end_time: endTime,
+  };
+}
+
+function shiftCourseDateRow(
+  startTime: string,
+  endTime: string,
+  interval: RecurrenceInterval,
+  index: number,
+) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const shift = interval === "weekly" ? addWeeks : addMonths;
+
+  return {
+    startDate: shift(start, index),
+    endDate: shift(end, index),
   };
 }
 
@@ -158,6 +191,11 @@ export function HealthCoursesPage({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | CourseStatus>("all");
   const [nowMs, setNowMs] = useState(0);
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("single");
+  const [manualDates, setManualDates] = useState<CourseDateRow[]>([]);
+  const [recurrenceInterval, setRecurrenceInterval] =
+    useState<RecurrenceInterval>("weekly");
+  const [recurrenceCount, setRecurrenceCount] = useState(10);
 
   const isAdmin = roles.includes("admin");
   const isPhysio = roles.includes("physiotherapy");
@@ -258,14 +296,84 @@ export function HealthCoursesPage({
 
   function openCreate() {
     setForm(emptyCourseForm());
+    setScheduleMode("single");
+    setManualDates([]);
+    setRecurrenceInterval("weekly");
+    setRecurrenceCount(10);
     setShowForm(true);
     setMessage(null);
   }
 
   function openEdit(course: Course) {
     setForm(fromCourse(course));
+    setScheduleMode("single");
+    setManualDates([]);
     setShowForm(true);
     setMessage(null);
+  }
+
+  function addManualDate() {
+    const last = manualDates.at(-1);
+    const baseStart = last?.start_time ?? form.start_time;
+    const baseEnd = last?.end_time ?? form.end_time;
+    const next = shiftCourseDateRow(baseStart, baseEnd, "weekly", 1);
+
+    setManualDates([
+      ...manualDates,
+      makeCourseDateRow(
+        toDatetimeLocal(next.startDate),
+        toDatetimeLocal(next.endDate),
+      ),
+    ]);
+  }
+
+  function updateManualDate(
+    id: string,
+    field: "start_time" | "end_time",
+    value: string,
+  ) {
+    setManualDates(
+      manualDates.map((dateRow) =>
+        dateRow.id === id ? { ...dateRow, [field]: value } : dateRow,
+      ),
+    );
+  }
+
+  function removeManualDate(id: string) {
+    setManualDates(manualDates.filter((dateRow) => dateRow.id !== id));
+  }
+
+  function getCourseOccurrences() {
+    if (form.id || scheduleMode === "single") {
+      return [
+        {
+          startDate: new Date(form.start_time),
+          endDate: new Date(form.end_time),
+        },
+      ];
+    }
+
+    if (scheduleMode === "manual") {
+      return [
+        {
+          startDate: new Date(form.start_time),
+          endDate: new Date(form.end_time),
+        },
+        ...manualDates.map((dateRow) => ({
+          startDate: new Date(dateRow.start_time),
+          endDate: new Date(dateRow.end_time),
+        })),
+      ];
+    }
+
+    return Array.from({ length: recurrenceCount }).map((_, index) =>
+      shiftCourseDateRow(
+        form.start_time,
+        form.end_time,
+        recurrenceInterval,
+        index,
+      ),
+    );
   }
 
   async function saveCourse(event: FormEvent<HTMLFormElement>) {
@@ -277,11 +385,24 @@ export function HealthCoursesPage({
       return;
     }
 
-    const startDate = new Date(form.start_time);
-    const endDate = new Date(form.end_time);
+    const occurrences = getCourseOccurrences();
 
-    if (endDate <= startDate) {
-      setMessage("Endzeit muss nach Startzeit liegen.");
+    if (occurrences.length === 0) {
+      setMessage("Bitte mindestens einen Termin angeben.");
+      return;
+    }
+
+    if (occurrences.length > 52) {
+      setMessage("Bitte maximal 52 Termine auf einmal anlegen.");
+      return;
+    }
+
+    const invalidOccurrence = occurrences.find(
+      (occurrence) => occurrence.endDate <= occurrence.startDate,
+    );
+
+    if (invalidOccurrence) {
+      setMessage("Bei allen Terminen muss die Endzeit nach der Startzeit liegen.");
       return;
     }
 
@@ -290,14 +411,23 @@ export function HealthCoursesPage({
       return;
     }
 
+    if (
+      !form.id &&
+      scheduleMode === "recurring" &&
+      (!Number.isInteger(recurrenceCount) ||
+        recurrenceCount < 1 ||
+        recurrenceCount > 52)
+    ) {
+      setMessage("Bitte eine Terminanzahl zwischen 1 und 52 angeben.");
+      return;
+    }
+
     setLoading(true);
 
-    const payload = {
+    const payloadBase = {
       title: form.title.trim(),
       description: form.description.trim() || null,
       category: form.category.trim() || null,
-      start_time: startDate.toISOString(),
-      end_time: endDate.toISOString(),
       location: form.location.trim() || null,
       max_participants: form.max_participants,
       status: form.status,
@@ -307,8 +437,21 @@ export function HealthCoursesPage({
     };
 
     const { error } = form.id
-      ? await supabase.from("health_courses").update(payload).eq("id", form.id)
-      : await supabase.from("health_courses").insert(payload);
+      ? await supabase
+          .from("health_courses")
+          .update({
+            ...payloadBase,
+            start_time: occurrences[0].startDate.toISOString(),
+            end_time: occurrences[0].endDate.toISOString(),
+          })
+          .eq("id", form.id)
+      : await supabase.from("health_courses").insert(
+          occurrences.map((occurrence) => ({
+            ...payloadBase,
+            start_time: occurrence.startDate.toISOString(),
+            end_time: occurrence.endDate.toISOString(),
+          })),
+        );
 
     setLoading(false);
 
@@ -318,6 +461,8 @@ export function HealthCoursesPage({
     }
 
     setShowForm(false);
+    setScheduleMode("single");
+    setManualDates([]);
     await reload();
   }
 
@@ -517,6 +662,160 @@ export function HealthCoursesPage({
                   required
                 />
               </Field>
+              {!form.id ? (
+                <div className="space-y-4 rounded-md border border-border bg-muted/40 p-4 md:col-span-2">
+                  <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+                    <Field>
+                      <Label htmlFor="course-schedule-mode">Terminplanung</Label>
+                      <Select
+                        id="course-schedule-mode"
+                        value={scheduleMode}
+                        onChange={(event) =>
+                          setScheduleMode(event.target.value as ScheduleMode)
+                        }
+                      >
+                        <option value="single">Einzeltermin</option>
+                        <option value="manual">Mehrere Daten manuell</option>
+                        <option value="recurring">Serie erstellen</option>
+                      </Select>
+                    </Field>
+                    <div className="flex items-end text-sm text-muted-foreground">
+                      {scheduleMode === "single"
+                        ? "Es wird genau ein Kurstermin angelegt."
+                        : scheduleMode === "manual"
+                          ? "Der Starttermin oben zaehlt als erster Termin. Weitere Daten kannst du unten ergaenzen."
+                          : "Aus dem Starttermin oben wird automatisch eine Terminserie erzeugt."}
+                    </div>
+                  </div>
+
+                  {scheduleMode === "manual" ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium">
+                            Zusaetzliche Termine
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Insgesamt: {manualDates.length + 1} Termine
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addManualDate}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Termin hinzufuegen
+                        </Button>
+                      </div>
+
+                      {manualDates.length > 0 ? (
+                        <div className="space-y-2">
+                          {manualDates.map((dateRow, index) => (
+                            <div
+                              key={dateRow.id}
+                              className="grid gap-2 rounded-md border border-border bg-card p-3 md:grid-cols-[1fr_1fr_auto]"
+                            >
+                              <Field>
+                                <Label htmlFor={`manual-start-${dateRow.id}`}>
+                                  Termin {index + 2} Start
+                                </Label>
+                                <Input
+                                  id={`manual-start-${dateRow.id}`}
+                                  type="datetime-local"
+                                  value={dateRow.start_time}
+                                  onChange={(event) =>
+                                    updateManualDate(
+                                      dateRow.id,
+                                      "start_time",
+                                      event.target.value,
+                                    )
+                                  }
+                                  required
+                                />
+                              </Field>
+                              <Field>
+                                <Label htmlFor={`manual-end-${dateRow.id}`}>
+                                  Termin {index + 2} Ende
+                                </Label>
+                                <Input
+                                  id={`manual-end-${dateRow.id}`}
+                                  type="datetime-local"
+                                  value={dateRow.end_time}
+                                  min={dateRow.start_time}
+                                  onChange={(event) =>
+                                    updateManualDate(
+                                      dateRow.id,
+                                      "end_time",
+                                      event.target.value,
+                                    )
+                                  }
+                                  required
+                                />
+                              </Field>
+                              <div className="flex items-end">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeManualDate(dateRow.id)}
+                                  title="Termin entfernen"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {scheduleMode === "recurring" ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field>
+                        <Label htmlFor="course-recurrence-count">
+                          Anzahl Termine
+                        </Label>
+                        <Input
+                          id="course-recurrence-count"
+                          type="number"
+                          min={1}
+                          max={52}
+                          value={recurrenceCount}
+                          onChange={(event) =>
+                            setRecurrenceCount(Number(event.target.value))
+                          }
+                          required
+                        />
+                      </Field>
+                      <Field>
+                        <Label htmlFor="course-recurrence-interval">
+                          Rhythmus
+                        </Label>
+                        <Select
+                          id="course-recurrence-interval"
+                          value={recurrenceInterval}
+                          onChange={(event) =>
+                            setRecurrenceInterval(
+                              event.target.value as RecurrenceInterval,
+                            )
+                          }
+                        >
+                          <option value="weekly">Woechentlich</option>
+                          <option value="monthly">Monatlich</option>
+                        </Select>
+                      </Field>
+                      <p className="text-sm text-muted-foreground md:col-span-2">
+                        Es werden {recurrenceCount || 0} Termine mit gleicher
+                        Dauer, gleichem Ort, gleicher Beschreibung und gleicher
+                        Kapazitaet angelegt.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <Field>
                 <Label htmlFor="course-location">Ort</Label>
                 <Input
@@ -597,7 +896,11 @@ export function HealthCoursesPage({
             </div>
             <Button type="submit" disabled={loading}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Speichern
+              {form.id
+                ? "Speichern"
+                : scheduleMode === "single"
+                  ? "Kurs anlegen"
+                  : "Termine anlegen"}
             </Button>
           </form>
         </Card>
