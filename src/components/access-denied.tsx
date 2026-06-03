@@ -7,7 +7,7 @@ export function AccessDenied() {
       <Lock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
       <h1 className="text-xl font-semibold">Kein Zugriff</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Fuer diesen Bereich fehlen deinem Konto die passenden Rechte.
+        Für diesen Bereich fehlen deinem Konto die passenden Rechte.
       </p>
     </Card>
   );

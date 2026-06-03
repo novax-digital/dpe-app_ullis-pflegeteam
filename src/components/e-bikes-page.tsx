@@ -29,11 +29,11 @@ type Profile = Pick<
 type EBikeStatus = Database["public"]["Enums"]["ebike_status"];
 
 const statusLabel: Record<EBikeStatus, string> = {
-  available: "Verfuegbar",
+  available: "Verfügbar",
   reserved: "Reserviert",
   in_use: "Unterwegs",
   maintenance: "Wartung",
-  unavailable: "Nicht verfuegbar",
+  unavailable: "Nicht verfügbar",
 };
 
 const statusTone: Record<EBikeStatus, "neutral" | "success" | "warning" | "info"> = {
@@ -256,7 +256,7 @@ export function EBikesPage({
   }
 
   async function deleteBike(bike: EBike) {
-    if (!window.confirm(`E-Bike "${bike.name}" loeschen?`)) return;
+    if (!window.confirm(`E-Bike "${bike.name}" löschen?`)) return;
 
     const { error } = await supabase.from("ebikes").delete().eq("id", bike.id);
 
@@ -273,7 +273,7 @@ export function EBikesPage({
     setMessage(null);
 
     if (!selectedBike) {
-      setMessage("Bitte ein E-Bike auswaehlen.");
+      setMessage("Bitte ein E-Bike auswählen.");
       return;
     }
 
@@ -291,7 +291,7 @@ export function EBikesPage({
     }
 
     if (endDate.getTime() - startDate.getTime() > 14 * 24 * 60 * 60 * 1000) {
-      setMessage("Maximale Reservierungsdauer betraegt 14 Tage.");
+      setMessage("Maximale Reservierungsdauer beträgt 14 Tage.");
       return;
     }
 
@@ -363,7 +363,7 @@ export function EBikesPage({
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowBikeForm(false)}
-                title="Schliessen"
+                title="Schließen"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -391,7 +391,7 @@ export function EBikesPage({
                 />
               </Field>
               <Field>
-                <Label htmlFor="bike-frame">Rahmengroesse</Label>
+                <Label htmlFor="bike-frame">Rahmengröße</Label>
                 <Input
                   id="bike-frame"
                   value={bikeForm.frame_size}
@@ -546,7 +546,7 @@ export function EBikesPage({
                           onClick={() => deleteBike(bikeItem)}
                         >
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          Loeschen
+                          Löschen
                         </Button>
                       </>
                     ) : null}
@@ -569,7 +569,7 @@ export function EBikesPage({
                   onChange={(event) => setSelectedBikeId(event.target.value)}
                   required
                 >
-                  <option value="">Auswaehlen</option>
+                  <option value="">Auswählen</option>
                   {bikes
                     .filter(
                       (bikeItem) =>

@@ -1,13 +1,13 @@
 # Ullis Connect
 
-Neuaufbau des Lovable-Prototyps als Next.js-App fuer Vercel und Supabase.
+Neuaufbau des Lovable-Prototyps als Next.js-App für Vercel und Supabase.
 
 ## Stack
 
 - Next.js App Router, TypeScript, React 19
 - Tailwind CSS 4
 - Supabase Auth, Postgres, RLS, Realtime
-- Vercel Route Handler fuer Admin-Aktionen
+- Vercel Route Handler für Admin-Aktionen
 
 ## Lokal starten
 
@@ -48,7 +48,7 @@ values ('<auth-user-id>', 'admin')
 on conflict (user_id, role) do nothing;
 ```
 
-5. Types bei Schema-Aenderungen aktualisieren:
+5. Types bei Schema-Änderungen aktualisieren:
 
 ```bash
 supabase gen types typescript --project-id <project-ref> --schema public > src/lib/database.types.ts
@@ -56,13 +56,13 @@ supabase gen types typescript --project-id <project-ref> --schema public > src/l
 
 ## Aktueller Rebuild-Stand
 
-- Login und geschuetztes App-Layout
+- Login und geschütztes App-Layout
 - Rollen: `admin`, `employee`, `physiotherapy`
 - Dashboard
 - News mit Admin-CRUD und Publish-Status
 - E-Bikes mit Admin-Verwaltung, Reservierung und Storno
 - Gesundheitskurse mit Verwaltung, Anmeldung, Storno und Teilnahmestatus
-- Mitarbeitendenanlage ueber `/api/admin/employees`
+- Mitarbeitendenanlage über `/api/admin/employees`
 - Profileinstellungen
 
 ## Deploy auf Vercel

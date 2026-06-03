@@ -96,7 +96,7 @@ export function LoginForm() {
 
           {!hasSupabaseEnv ? (
             <Notice tone="danger">
-              Supabase ist noch nicht konfiguriert. Befuelle zuerst die Werte
+              Supabase ist noch nicht konfiguriert. Befülle zuerst die Werte
               aus `.env.example`.
             </Notice>
           ) : null}

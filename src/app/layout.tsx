@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Ullis Connect",
-  description: "Mitarbeiterportal fuer Ullis Pflegeteam",
+  description: "Mitarbeiterportal für Ullis Pflegeteam",
 };
 
 export default function RootLayout({

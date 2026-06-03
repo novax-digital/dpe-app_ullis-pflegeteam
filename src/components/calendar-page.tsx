@@ -263,7 +263,7 @@ export function CalendarPage({
 
   async function deleteEvent(event: UnifiedEvent) {
     if (event.source !== "calendar") return;
-    if (!window.confirm(`Termin "${event.title}" loeschen?`)) return;
+    if (!window.confirm(`Termin "${event.title}" löschen?`)) return;
 
     const { error } = await supabase
       .from("calendar_events")
@@ -305,7 +305,7 @@ export function CalendarPage({
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowForm(false)}
-                title="Schliessen"
+                title="Schließen"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -414,7 +414,7 @@ export function CalendarPage({
                 variant="outline"
                 size="icon"
                 onClick={() => moveMonth(1)}
-                title="Naechster Monat"
+                title="Nächster Monat"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -500,7 +500,7 @@ export function CalendarPage({
                 variant="outline"
                 size="icon"
                 onClick={openCreateForSelectedDay}
-                title="Termin fuer diesen Tag"
+                title="Termin für diesen Tag"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -553,7 +553,7 @@ export function CalendarPage({
                       variant="ghost"
                       size="icon"
                       onClick={() => deleteEvent(event)}
-                      title="Loeschen"
+                      title="Löschen"
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>

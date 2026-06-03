@@ -50,7 +50,7 @@ type CourseDateRow = {
 };
 
 const statusLabel: Record<CourseStatus, string> = {
-  available: "Verfuegbar",
+  available: "Verfügbar",
   full: "Ausgebucht",
   completed: "Abgeschlossen",
   cancelled: "Abgesagt",
@@ -158,7 +158,7 @@ function friendlyError(message: string) {
   const lower = message.toLowerCase();
   if (lower.includes("ausgebucht")) return "Der Kurs ist bereits ausgebucht.";
   if (lower.includes("24 stunden")) {
-    return "Stornierung ist nur bis 24 Stunden vor Kursbeginn moeglich.";
+    return "Stornierung ist nur bis 24 Stunden vor Kursbeginn möglich.";
   }
   if (lower.includes("endzeit")) return "Endzeit muss nach Startzeit liegen.";
   if (lower.includes("vergangenheit")) {
@@ -529,7 +529,7 @@ export function HealthCoursesPage({
   }
 
   async function deleteCourse(course: Course) {
-    if (!window.confirm(`Kurs "${course.title}" loeschen?`)) return;
+    if (!window.confirm(`Kurs "${course.title}" löschen?`)) return;
 
     const { error } = await supabase
       .from("health_courses")
@@ -611,7 +611,7 @@ export function HealthCoursesPage({
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowForm(false)}
-                title="Schliessen"
+                title="Schließen"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -683,7 +683,7 @@ export function HealthCoursesPage({
                       {scheduleMode === "single"
                         ? "Es wird genau ein Kurstermin angelegt."
                         : scheduleMode === "manual"
-                          ? "Der Starttermin oben zaehlt als erster Termin. Weitere Daten kannst du unten ergaenzen."
+                          ? "Der Starttermin oben zählt als erster Termin. Weitere Daten kannst du unten ergänzen."
                           : "Aus dem Starttermin oben wird automatisch eine Terminserie erzeugt."}
                     </div>
                   </div>
@@ -693,7 +693,7 @@ export function HealthCoursesPage({
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm font-medium">
-                            Zusaetzliche Termine
+                            Zusätzliche Termine
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Insgesamt: {manualDates.length + 1} Termine
@@ -706,7 +706,7 @@ export function HealthCoursesPage({
                           onClick={addManualDate}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          Termin hinzufuegen
+                          Termin hinzufügen
                         </Button>
                       </div>
 
@@ -803,14 +803,14 @@ export function HealthCoursesPage({
                             )
                           }
                         >
-                          <option value="weekly">Woechentlich</option>
+                          <option value="weekly">Wöchentlich</option>
                           <option value="monthly">Monatlich</option>
                         </Select>
                       </Field>
                       <p className="text-sm text-muted-foreground md:col-span-2">
                         Es werden {recurrenceCount || 0} Termine mit gleicher
                         Dauer, gleichem Ort, gleicher Beschreibung und gleicher
-                        Kapazitaet angelegt.
+                        Kapazität angelegt.
                       </p>
                     </div>
                   ) : null}
@@ -827,7 +827,7 @@ export function HealthCoursesPage({
                 />
               </Field>
               <Field>
-                <Label htmlFor="course-max">Plaetze</Label>
+                <Label htmlFor="course-max">Plätze</Label>
                 <Input
                   id="course-max"
                   type="number"
@@ -1053,7 +1053,7 @@ export function HealthCoursesPage({
                         onClick={() => deleteCourse(course)}
                       >
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        Loeschen
+                        Löschen
                       </Button>
                     </>
                   ) : null}

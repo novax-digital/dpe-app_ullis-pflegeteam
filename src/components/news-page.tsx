@@ -102,7 +102,7 @@ export function NewsPage({
   }
 
   async function remove(item: NewsItem) {
-    if (!window.confirm(`News "${item.title}" loeschen?`)) return;
+    if (!window.confirm(`News "${item.title}" löschen?`)) return;
 
     const { error } = await supabase.from("news").delete().eq("id", item.id);
 
@@ -118,7 +118,7 @@ export function NewsPage({
     <div className="space-y-6">
       <PageHeader
         title="News"
-        eyebrow="Ankuendigungen"
+        eyebrow="Ankündigungen"
         action={
           isAdmin ? (
             <Button onClick={openCreate}>
@@ -143,7 +143,7 @@ export function NewsPage({
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowForm(false)}
-                title="Schliessen"
+                title="Schließen"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -183,7 +183,7 @@ export function NewsPage({
                   <h2 className="text-lg font-semibold">{item.title}</h2>
                   {isAdmin ? (
                     <Badge tone={item.published ? "success" : "neutral"}>
-                      {item.published ? "Veroeffentlicht" : "Entwurf"}
+                      {item.published ? "Veröffentlicht" : "Entwurf"}
                     </Badge>
                   ) : null}
                 </div>
@@ -198,7 +198,7 @@ export function NewsPage({
                     variant="ghost"
                     size="icon"
                     onClick={() => togglePublish(item)}
-                    title={item.published ? "Unveroeffentlichen" : "Veroeffentlichen"}
+                    title={item.published ? "Unveröffentlichen" : "Veröffentlichen"}
                   >
                     {item.published ? (
                       <EyeOff className="h-4 w-4" />
@@ -220,7 +220,7 @@ export function NewsPage({
                     variant="ghost"
                     size="icon"
                     onClick={() => remove(item)}
-                    title="Loeschen"
+                    title="Löschen"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>

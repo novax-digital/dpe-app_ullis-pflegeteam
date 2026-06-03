@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
-      { error: "Ungueltige E-Mail-Adresse." },
+      { error: "Ungültige E-Mail-Adresse." },
       { status: 400 },
     );
   }
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   }
 
   if (!allowedRoles.includes(role)) {
-    return NextResponse.json({ error: "Ungueltige Rolle." }, { status: 400 });
+    return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
   }
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({

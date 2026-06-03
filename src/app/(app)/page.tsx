@@ -79,7 +79,7 @@ export default async function DashboardPage() {
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="E-Bikes verfuegbar"
+          label="E-Bikes verfügbar"
           value={bikesResult.count ?? 0}
           icon={<Bike className="h-5 w-5" />}
         />
@@ -104,7 +104,7 @@ export default async function DashboardPage() {
         <Card className="p-5">
           <div className="mb-4 flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Meine naechsten Termine</h2>
+            <h2 className="font-semibold">Meine nächsten Termine</h2>
           </div>
           <div className="space-y-3">
             {reservationsResult.data?.map((reservation) => (
