@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.trg_reservation_status_sync() FROM public, anon, authenticated;

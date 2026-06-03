@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --background: hsl(36 40% 98%);
+  --foreground: hsl(24 18% 14%);
+  --card: hsl(0 0% 100%);
+  --muted: hsl(30 25% 95%);
+  --muted-foreground: hsl(24 10% 42%);
+  --border: hsl(30 20% 90%);
+  --primary: hsl(22 95% 52%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-glow: hsl(32 100% 62%);
+  --accent: hsl(22 95% 95%);
+  --accent-foreground: hsl(22 95% 30%);
+  --destructive: hsl(0 78% 52%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 20%, white);
+}

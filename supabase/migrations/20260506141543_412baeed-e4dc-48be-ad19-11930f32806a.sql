@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.recompute_ebike_status(uuid) FROM public, anon, authenticated;
