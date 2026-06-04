@@ -1,8 +1,10 @@
 import { Bike, CalendarDays, HeartPulse, Newspaper, Users } from "lucide-react";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 import { ROLE_LABEL } from "@/lib/auth";
 import { getUserContext } from "@/lib/auth-server";
+import type { Database } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +39,7 @@ export default async function DashboardPage() {
       : Promise.resolve({ count: null }),
     supabase
       .from("news")
-      .select("id, title, published, published_at, created_at")
+      .select("id, title, author_id, published, published_at, created_at")
       .order("created_at", { ascending: false })
       .limit(3),
     supabase
@@ -66,16 +68,67 @@ export default async function DashboardPage() {
           new Date(b!.start_time).getTime(),
       )
       .slice(0, 3) ?? [];
+  const newsAuthorIds = Array.from(
+    new Set(newsResult.data?.map((item) => item.author_id) ?? []),
+  );
+  let newsProfiles: Pick<
+    Database["public"]["Tables"]["profiles"]["Row"],
+    "id" | "full_name" | "email"
+  >[] = [];
+
+  if (newsAuthorIds.length > 0) {
+    try {
+      const admin = createSupabaseAdminClient();
+      const { data } = await admin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", newsAuthorIds);
+      newsProfiles = data ?? [];
+    } catch {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", newsAuthorIds);
+      newsProfiles = data ?? [];
+    }
+  }
+  const newsProfileById = new Map(newsProfiles.map((item) => [item.id, item]));
 
   const displayName =
     profile?.full_name?.trim() || profile?.email?.trim() || "willkommen";
+  const heroTitle =
+    profile?.full_name?.trim() || profile?.email?.trim()
+      ? `Willkommen zurück, ${displayName}`
+      : "Willkommen zurück";
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow={primaryRole ? ROLE_LABEL[primaryRole] : "Team"}
-        title={`Hallo ${displayName}`}
-      />
+      <section
+        className="relative min-h-[300px] overflow-hidden rounded-lg border border-border bg-muted shadow-sm sm:min-h-[340px]"
+        style={{
+          backgroundImage: "url('/images/team-collage.png')",
+          backgroundPosition: "center 45%",
+          backgroundSize: "cover",
+        }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-t from-white via-white/65 to-white/5" />
+        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
+          <div className="max-w-3xl space-y-3">
+            <Badge tone="success">
+              {primaryRole ? ROLE_LABEL[primaryRole] : "Team"}
+            </Badge>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-normal text-foreground sm:text-4xl">
+                {heroTitle}
+              </h1>
+              <p className="mt-2 text-base text-muted-foreground sm:text-lg">
+                Hier ist dein heutiger Überblick in der Mitarbeiter-App von
+                Ullis Pflegeteam.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -165,7 +218,10 @@ export default async function DashboardPage() {
                   ) : null}
                 </div>
                 <p className="mt-1 text-muted-foreground">
-                  {formatDateTime(item.published_at ?? item.created_at)}
+                  {newsProfileById.get(item.author_id)?.full_name?.trim() ||
+                    newsProfileById.get(item.author_id)?.email?.trim() ||
+                    "Unbekannter Autor"}{" "}
+                  · {formatDateTime(item.published_at ?? item.created_at)}
                 </p>
               </div>
             ))}

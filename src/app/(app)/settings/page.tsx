@@ -1,10 +1,5 @@
-import { SettingsPage } from "@/components/settings-page";
-import { getUserContext } from "@/lib/auth-server";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default async function SettingsRoute() {
-  const { profile } = await getUserContext();
-
-  return <SettingsPage profile={profile} />;
+export default function SettingsRoute() {
+  redirect("/settings/profil");
 }

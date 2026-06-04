@@ -88,6 +88,48 @@ export type Database = {
           },
         ]
       }
+      documents: {
+        Row: {
+          created_at: string
+          description: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_url: string
+          id: string
+          mime_type: string
+          title: string
+          updated_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_path: string
+          file_size: number
+          file_url: string
+          id?: string
+          mime_type: string
+          title: string
+          updated_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          file_url?: string
+          id?: string
+          mime_type?: string
+          title?: string
+          updated_at?: string
+          uploaded_by?: string
+        }
+        Relationships: []
+      }
       ebike_reservations: {
         Row: {
           created_at: string
@@ -95,6 +137,8 @@ export type Database = {
           end_time: string
           id: string
           purpose: string | null
+          safety_confirmation_text: string | null
+          safety_confirmed_at: string | null
           start_time: string
           status: Database["public"]["Enums"]["reservation_status"]
           updated_at: string
@@ -106,6 +150,8 @@ export type Database = {
           end_time: string
           id?: string
           purpose?: string | null
+          safety_confirmation_text?: string | null
+          safety_confirmed_at?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["reservation_status"]
           updated_at?: string
@@ -117,6 +163,8 @@ export type Database = {
           end_time?: string
           id?: string
           purpose?: string | null
+          safety_confirmation_text?: string | null
+          safety_confirmed_at?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["reservation_status"]
           updated_at?: string
@@ -131,6 +179,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ebike_availability_windows: {
+        Row: {
+          active: boolean
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          day_of_week: number
+          end_time?: string
+          id?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ebike_reservation_settings: {
+        Row: {
+          created_at: string
+          id: string
+          safety_confirmation_enabled: boolean
+          safety_confirmation_text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          safety_confirmation_enabled?: boolean
+          safety_confirmation_text?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          safety_confirmation_enabled?: boolean
+          safety_confirmation_text?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       ebikes: {
         Row: {
@@ -225,12 +327,44 @@ export type Database = {
         }
         Relationships: []
       }
+      health_course_settings: {
+        Row: {
+          allow_same_course_multiple_registrations: boolean
+          categories: string[]
+          created_at: string
+          id: string
+          locations: string[]
+          max_active_registrations_per_user: number
+          updated_at: string
+        }
+        Insert: {
+          allow_same_course_multiple_registrations?: boolean
+          categories?: string[]
+          created_at?: string
+          id?: string
+          locations?: string[]
+          max_active_registrations_per_user?: number
+          updated_at?: string
+        }
+        Update: {
+          allow_same_course_multiple_registrations?: boolean
+          categories?: string[]
+          created_at?: string
+          id?: string
+          locations?: string[]
+          max_active_registrations_per_user?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       news: {
         Row: {
           author_id: string
           content: string
           created_at: string
+          excerpt: string | null
           id: string
+          image_urls: string[]
           published: boolean
           published_at: string | null
           title: string
@@ -240,7 +374,9 @@ export type Database = {
           author_id: string
           content?: string
           created_at?: string
+          excerpt?: string | null
           id?: string
+          image_urls?: string[]
           published?: boolean
           published_at?: string | null
           title: string
@@ -250,7 +386,9 @@ export type Database = {
           author_id?: string
           content?: string
           created_at?: string
+          excerpt?: string | null
           id?: string
+          image_urls?: string[]
           published?: boolean
           published_at?: string | null
           title?: string

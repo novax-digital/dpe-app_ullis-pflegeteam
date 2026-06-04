@@ -208,6 +208,17 @@ export function CalendarPage({
     };
   }, [reload, supabase]);
 
+  useEffect(() => {
+    if (!showForm) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showForm]);
+
   function moveMonth(delta: number) {
     const next = addMonths(monthDate, delta);
     setMonthCursor(next.toISOString());
@@ -217,6 +228,11 @@ export function CalendarPage({
   function openCreateForSelectedDay() {
     setForm(emptyEventForm(selectedDay));
     setShowForm(true);
+    setMessage(null);
+  }
+
+  function closeEventForm() {
+    setShowForm(false);
     setMessage(null);
   }
 
@@ -256,7 +272,7 @@ export function CalendarPage({
       return;
     }
 
-    setShowForm(false);
+    closeEventForm();
     setForm(emptyEventForm(selectedDay));
     await reload();
   }
@@ -293,99 +309,137 @@ export function CalendarPage({
         }
       />
 
-      {message ? <Notice tone="danger">{message}</Notice> : null}
+      {message && !showForm ? <Notice tone="danger">{message}</Notice> : null}
 
       {isAdmin && showForm ? (
-        <Card className="p-5">
-          <form onSubmit={saveEvent} className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Neuer Termin</h2>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowForm(false)}
-                title="Schließen"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field>
-                <Label htmlFor="calendar-title">Titel</Label>
-                <Input
-                  id="calendar-title"
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm({ ...form, title: event.target.value })
-                  }
-                  placeholder="z.B. Mitarbeiterfest"
-                  required
-                />
-              </Field>
-              <Field>
-                <Label htmlFor="calendar-location">Ort</Label>
-                <Input
-                  id="calendar-location"
-                  value={form.location}
-                  onChange={(event) =>
-                    setForm({ ...form, location: event.target.value })
-                  }
-                />
-              </Field>
-              <Field>
-                <Label htmlFor="calendar-start">Start</Label>
-                <Input
-                  id="calendar-start"
-                  type="datetime-local"
-                  value={form.start_time}
-                  onChange={(event) =>
-                    setForm({ ...form, start_time: event.target.value })
-                  }
-                  required
-                />
-              </Field>
-              <Field>
-                <Label htmlFor="calendar-end">Ende</Label>
-                <Input
-                  id="calendar-end"
-                  type="datetime-local"
-                  value={form.end_time}
-                  min={form.start_time}
-                  onChange={(event) =>
-                    setForm({ ...form, end_time: event.target.value })
-                  }
-                  required
-                />
-              </Field>
-              <Field className="md:col-span-2">
-                <Label htmlFor="calendar-description">Beschreibung</Label>
-                <Textarea
-                  id="calendar-description"
-                  rows={3}
-                  value={form.description}
-                  onChange={(event) =>
-                    setForm({ ...form, description: event.target.value })
-                  }
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-sm md:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={form.all_day}
-                  onChange={(event) =>
-                    setForm({ ...form, all_day: event.target.checked })
-                  }
-                />
-                Ganztagestermin
-              </label>
-            </div>
-            <Button type="submit" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Speichern
-            </Button>
-          </form>
-        </Card>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeEventForm();
+            }
+          }}
+        >
+          <Card
+            className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-event-dialog-title"
+          >
+            <form onSubmit={saveEvent} className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2
+                    id="calendar-event-dialog-title"
+                    className="font-semibold"
+                  >
+                    Neuer Termin
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {format(selectedDay, "EEEE, dd.MM.yyyy", { locale: de })}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={closeEventForm}
+                  title="Schließen"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {message ? <Notice tone="danger">{message}</Notice> : null}
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field>
+                  <Label htmlFor="calendar-title">Titel</Label>
+                  <Input
+                    id="calendar-title"
+                    value={form.title}
+                    onChange={(event) =>
+                      setForm({ ...form, title: event.target.value })
+                    }
+                    placeholder="z.B. Mitarbeiterfest"
+                    required
+                  />
+                </Field>
+                <Field>
+                  <Label htmlFor="calendar-location">Ort</Label>
+                  <Input
+                    id="calendar-location"
+                    value={form.location}
+                    onChange={(event) =>
+                      setForm({ ...form, location: event.target.value })
+                    }
+                  />
+                </Field>
+                <Field>
+                  <Label htmlFor="calendar-start">Start</Label>
+                  <Input
+                    id="calendar-start"
+                    type="datetime-local"
+                    value={form.start_time}
+                    onChange={(event) =>
+                      setForm({ ...form, start_time: event.target.value })
+                    }
+                    required
+                  />
+                </Field>
+                <Field>
+                  <Label htmlFor="calendar-end">Ende</Label>
+                  <Input
+                    id="calendar-end"
+                    type="datetime-local"
+                    value={form.end_time}
+                    min={form.start_time}
+                    onChange={(event) =>
+                      setForm({ ...form, end_time: event.target.value })
+                    }
+                    required
+                  />
+                </Field>
+                <Field className="md:col-span-2">
+                  <Label htmlFor="calendar-description">Beschreibung</Label>
+                  <Textarea
+                    id="calendar-description"
+                    rows={3}
+                    value={form.description}
+                    onChange={(event) =>
+                      setForm({ ...form, description: event.target.value })
+                    }
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-sm md:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={form.all_day}
+                    onChange={(event) =>
+                      setForm({ ...form, all_day: event.target.checked })
+                    }
+                    className="h-4 w-4 accent-primary"
+                  />
+                  Ganztagestermin
+                </label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeEventForm}
+                >
+                  Abbrechen
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Speichern
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
       ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
