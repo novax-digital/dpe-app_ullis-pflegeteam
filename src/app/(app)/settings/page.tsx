@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function SettingsRoute() {
-  redirect("/settings/profil");
+  redirect("/settings/e-bikes");
 }

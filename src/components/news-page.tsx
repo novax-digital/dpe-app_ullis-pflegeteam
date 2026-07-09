@@ -26,8 +26,10 @@ import {
   List,
   Loader2,
   Maximize2,
+  MessageCircle,
   Pencil,
   Plus,
+  Send,
   Star,
   Trash2,
   UserRound,
@@ -37,11 +39,13 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
   Notice,
   PageHeader,
+  Select,
   Textarea,
 } from "@/components/ui";
 import type { Database } from "@/lib/database.types";
@@ -50,10 +54,12 @@ import {
   NEWS_IMAGE_ACCEPTED_TYPES,
   NEWS_IMAGE_MAX_BYTES,
 } from "@/lib/news-images";
+import { normalizeNewsSettings } from "@/lib/news-settings";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
 
 type NewsItem = Database["public"]["Tables"]["news"]["Row"];
+type NewsComment = Database["public"]["Tables"]["news_comments"]["Row"];
 type Profile = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
   "id" | "full_name" | "email"
@@ -70,6 +76,13 @@ type NewsImageEntry = {
 };
 
 type NewsViewMode = "grid" | "list";
+type NoticeTone = "neutral" | "success" | "danger";
+type NotificationResult = {
+  sent?: boolean;
+  recipientCount?: number;
+  skippedReason?: string;
+  error?: string;
+};
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) {
@@ -104,27 +117,36 @@ function publishedLabel(item: NewsItem) {
 export function NewsPage({
   initialItems,
   initialProfiles,
+  initialCategories,
   isAdmin,
   userId,
 }: {
   initialItems: NewsItem[];
   initialProfiles: Profile[];
+  initialCategories: string[];
   isAdmin: boolean;
   userId: string;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [items, setItems] = useState(initialItems);
   const [profiles, setProfiles] = useState(initialProfiles);
+  const [categories, setCategories] = useState(initialCategories);
   const [editing, setEditing] = useState<NewsItem | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [content, setContent] = useState("");
+  const [sendNotification, setSendNotification] = useState(false);
   const [imageEntries, setImageEntries] = useState<NewsImageEntry[]>([]);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<NoticeTone>("danger");
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<NewsViewMode>("grid");
+  const [pendingNewsRemoval, setPendingNewsRemoval] = useState<NewsItem | null>(
+    null,
+  );
   const draftUrlsRef = useRef<string[]>([]);
 
   const profileById = useMemo(() => {
@@ -136,6 +158,8 @@ export function NewsPage({
   const visibleItems = isAdmin
     ? items
     : items.filter((item) => item.published);
+  const notificationAlreadySent = Boolean(editing?.notification_sent_at);
+  const canRequestNotification = isAdmin && !notificationAlreadySent;
 
   useEffect(() => {
     return () => {
@@ -145,12 +169,19 @@ export function NewsPage({
   }, []);
 
   async function reload() {
-    const { data } = await supabase
-      .from("news")
-      .select("*")
-      .order("created_at", { ascending: false });
-    const nextItems = (data ?? []) as NewsItem[];
+    const [newsResult, settingsResult] = await Promise.all([
+      supabase.from("news").select("*").order("created_at", {
+        ascending: false,
+      }),
+      supabase
+        .from("news_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle(),
+    ]);
+    const nextItems = (newsResult.data ?? []) as NewsItem[];
     setItems(nextItems);
+    setCategories(normalizeNewsSettings(settingsResult.data).categories);
 
     const authorIds = Array.from(
       new Set(nextItems.map((item) => item.author_id)),
@@ -178,25 +209,57 @@ export function NewsPage({
     setImageEntries([]);
     setShowForm(false);
     setEditing(null);
+    setSendNotification(false);
+  }
+
+  function showNotice(text: string, tone: NoticeTone = "danger") {
+    setMessage(text);
+    setMessageTone(tone);
+  }
+
+  function notificationNotice(notification: NotificationResult | undefined) {
+    if (!notification) return null;
+
+    if (notification.error) {
+      return `Nachricht gespeichert, Mailversand fehlgeschlagen: ${notification.error}`;
+    }
+
+    if (
+      notification.skippedReason?.includes("RESEND") ||
+      notification.skippedReason?.includes("keine Mitarbeiter-E-Mail")
+    ) {
+      return `Nachricht gespeichert, Mailversand ausgelassen: ${notification.skippedReason}`;
+    }
+
+    if (notification.sent) {
+      return `Nachricht gespeichert und an ${notification.recipientCount ?? 0} Mitarbeiter:innen versendet.`;
+    }
+
+    return null;
   }
 
   function openCreate() {
     clearImageDrafts();
     setEditing(null);
     setTitle("");
+    setCategory("");
     setExcerpt("");
     setContent("");
+    setSendNotification(false);
     setImageEntries([]);
     setShowForm(true);
     setMessage(null);
+    setMessageTone("danger");
   }
 
   function openEdit(item: NewsItem) {
     clearImageDrafts();
     setEditing(item);
     setTitle(item.title);
+    setCategory(item.category ?? "");
     setExcerpt(item.excerpt ?? "");
     setContent(item.content);
+    setSendNotification(false);
     setImageEntries(
       (item.image_urls ?? []).map((url, index) => ({
         id: `existing-${index}-${url}`,
@@ -208,6 +271,7 @@ export function NewsPage({
     );
     setShowForm(true);
     setMessage(null);
+    setMessageTone("danger");
   }
 
   function addImageFiles(files: FileList | File[]) {
@@ -220,7 +284,7 @@ export function NewsPage({
     );
 
     if (invalidFile) {
-      setMessage("Bitte Bilder im Format JPG, PNG, WebP oder GIF auswählen.");
+      showNotice("Bitte Bilder im Format JPG, PNG, WebP oder GIF auswählen.");
       return;
     }
 
@@ -229,7 +293,7 @@ export function NewsPage({
     );
 
     if (largeFile) {
-      setMessage("Ein Bild darf maximal 5 MB groß sein.");
+      showNotice("Ein Bild darf maximal 12 MB groß sein.");
       return;
     }
 
@@ -291,7 +355,7 @@ export function NewsPage({
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch("/api/admin/news-images", {
+    const response = await fetch("/api/news-images", {
       method: "POST",
       body: formData,
     });
@@ -312,7 +376,7 @@ export function NewsPage({
     setMessage(null);
 
     if (!title.trim()) {
-      setMessage("Titel ist erforderlich.");
+      showNotice("Titel ist erforderlich.");
       return;
     }
 
@@ -334,24 +398,48 @@ export function NewsPage({
         .filter((url): url is string => Boolean(url));
       const payload = {
         title: title.trim(),
+        category: category.trim() || null,
         excerpt: excerpt.trim() || null,
         content: content.trim(),
         image_urls: nextImageUrls,
+        send_notification: canRequestNotification && sendNotification,
       };
 
-      const { error } = editing
-        ? await supabase.from("news").update(payload).eq("id", editing.id)
-        : await supabase.from("news").insert({ ...payload, author_id: userId });
+      const response = await fetch(
+        editing ? `/api/news/${editing.id}` : "/api/news",
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        notification?: NotificationResult;
+      };
 
-      if (error) {
-        setMessage(error.message);
+      if (!response.ok) {
+        showNotice(data.error ?? "Die Nachricht konnte nicht gespeichert werden.");
         return;
       }
 
       closeForm();
       await reload();
+      const nextNotice = notificationNotice(data.notification);
+      if (nextNotice) {
+        showNotice(
+          nextNotice,
+          data.notification?.sent
+            ? "success"
+            : data.notification?.error
+              ? "danger"
+              : "neutral",
+        );
+      }
     } catch (error) {
-      setMessage(
+      showNotice(
         error instanceof Error
           ? error.message
           : "Die Bilder konnten nicht hochgeladen werden.",
@@ -363,29 +451,55 @@ export function NewsPage({
 
   async function togglePublish(item: NewsItem) {
     const next = !item.published;
-    const { error } = await supabase
-      .from("news")
-      .update({
-        published: next,
-        published_at: next ? new Date().toISOString() : null,
-      })
-      .eq("id", item.id);
+    const response = await fetch(`/api/news/${item.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ published: next }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      notification?: NotificationResult;
+    };
 
-    if (error) {
-      setMessage(error.message);
+    if (!response.ok) {
+      showNotice(data.error ?? "Der Status konnte nicht geändert werden.");
       return;
     }
 
     await reload();
+    const nextNotice = notificationNotice(data.notification);
+    if (nextNotice) {
+      showNotice(
+        nextNotice,
+        data.notification?.sent
+          ? "success"
+          : data.notification?.error
+            ? "danger"
+            : "neutral",
+      );
+    }
   }
 
-  async function remove(item: NewsItem) {
-    if (!window.confirm(`News "${item.title}" löschen?`)) return;
+  function remove(item: NewsItem) {
+    setPendingNewsRemoval(item);
+  }
 
-    const { error } = await supabase.from("news").delete().eq("id", item.id);
+  async function confirmRemove() {
+    const item = pendingNewsRemoval;
+    if (!item) return;
+    setPendingNewsRemoval(null);
 
-    if (error) {
-      setMessage(error.message);
+    const response = await fetch(`/api/news/${item.id}`, {
+      method: "DELETE",
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      showNotice(data.error ?? "Die Nachricht konnte nicht gelöscht werden.");
       return;
     }
 
@@ -395,8 +509,8 @@ export function NewsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="News"
-        eyebrow="Ankündigungen"
+        title="Nachrichten"
+        eyebrow="Team-Updates"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="inline-flex h-10 rounded-md border border-border bg-card p-1">
@@ -429,24 +543,22 @@ export function NewsPage({
                 Liste
               </button>
             </div>
-            {isAdmin ? (
-              <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Neue News
-              </Button>
-            ) : null}
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Neue Nachricht
+            </Button>
           </div>
         }
       />
 
-      {message ? <Notice tone="danger">{message}</Notice> : null}
+      {message ? <Notice tone={messageTone}>{message}</Notice> : null}
 
-      {isAdmin && showForm ? (
+      {showForm ? (
         <Card className="min-w-0 overflow-hidden p-5">
           <form onSubmit={save} className="space-y-4">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <h2 className="font-semibold">
-                {editing ? "News bearbeiten" : "Neue News"}
+                {editing ? "Nachricht bearbeiten" : "Neue Nachricht"}
               </h2>
               <Button
                 type="button"
@@ -470,6 +582,24 @@ export function NewsPage({
                 />
               </Field>
               <Field>
+                <Label htmlFor="news-category">Kategorie</Label>
+                <Select
+                  id="news-category"
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value)}
+                >
+                  <option value="">Ohne Kategorie</option>
+                  {categories.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field>
                 <Label htmlFor="news-excerpt">Auszug</Label>
                 <Input
                   id="news-excerpt"
@@ -489,6 +619,42 @@ export function NewsPage({
                 onChange={(event) => setContent(event.target.value)}
               />
             </Field>
+
+            {isAdmin ? (
+              <label
+                className={cn(
+                  "flex flex-col gap-3 rounded-md border border-border bg-muted/35 p-4 text-sm sm:flex-row sm:items-center sm:justify-between",
+                  notificationAlreadySent ? "opacity-75" : "",
+                )}
+              >
+                <span className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={sendNotification && canRequestNotification}
+                    disabled={!canRequestNotification}
+                    onChange={(event) =>
+                      setSendNotification(event.target.checked)
+                    }
+                    className="mt-1 h-4 w-4 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2 font-medium">
+                      <Send className="h-4 w-4 text-primary" />
+                      Per E-Mail an alle Mitarbeiter:innen senden
+                    </span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Verschickt eine einmalige Benachrichtigung mit Titel,
+                      kurzem Auszug und Link zur News.
+                    </span>
+                  </span>
+                </span>
+                {notificationAlreadySent ? (
+                  <Badge tone="success" className="self-start sm:self-center">
+                    Bereits versendet
+                  </Badge>
+                ) : null}
+              </label>
+            ) : null}
 
             <Field>
               <Label htmlFor="news-images">Bilder / Galerie</Label>
@@ -526,6 +692,7 @@ export function NewsPage({
                           <img
                             src={image.url}
                             alt={image.label}
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         </div>
@@ -577,7 +744,7 @@ export function NewsPage({
                     <div>
                       <p className="text-sm font-medium">Bilder hinzufügen</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        JPG, PNG, WebP oder GIF bis 5 MB pro Bild
+                        JPG, PNG, WebP oder GIF bis 12 MB pro Bild
                       </p>
                     </div>
                   </div>
@@ -628,13 +795,15 @@ export function NewsPage({
               <Card key={item.id} className="min-w-0 overflow-hidden">
                 <div className="grid min-w-0 gap-3 p-3 md:grid-cols-[150px_minmax(0,1fr)_auto] md:items-center">
                   <Link
-                    href={`/news/${item.id}`}
+                    href={`/nachrichten/${item.id}`}
                     className="block h-28 min-w-0 overflow-hidden rounded-md bg-muted md:h-24"
                   >
                     {imageUrl ? (
                       <img
                         src={imageUrl}
                         alt={item.title}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -652,6 +821,9 @@ export function NewsPage({
                         </Badge>
                       ) : null}
                       {index === 0 ? <Badge tone="info">Neu</Badge> : null}
+                      {item.category ? (
+                        <Badge tone="info">{item.category}</Badge>
+                      ) : null}
                       {item.image_urls.length > 1 ? (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Images className="h-3.5 w-3.5" />
@@ -659,7 +831,7 @@ export function NewsPage({
                         </span>
                       ) : null}
                     </div>
-                    <Link href={`/news/${item.id}`} className="block">
+                    <Link href={`/nachrichten/${item.id}`} className="block">
                       <h2 className="line-clamp-1 text-base font-semibold transition hover:text-primary">
                         {item.title}
                       </h2>
@@ -682,16 +854,17 @@ export function NewsPage({
                   </div>
 
                   <div className="flex shrink-0 items-center justify-start gap-2 md:flex-col md:items-end">
-                    {isAdmin ? (
-                      <NewsAdminActions
+                    {isAdmin || item.author_id === userId ? (
+                      <NewsItemActions
                         item={item}
+                        canPublish={isAdmin}
                         onTogglePublish={togglePublish}
                         onEdit={openEdit}
                         onRemove={remove}
                       />
                     ) : null}
                     <Link
-                      href={`/news/${item.id}`}
+                      href={`/nachrichten/${item.id}`}
                       className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium transition hover:bg-muted"
                     >
                       Weiterlesen
@@ -711,7 +884,7 @@ export function NewsPage({
               )}
             >
               <Link
-                href={`/news/${item.id}`}
+                href={`/nachrichten/${item.id}`}
                 className={cn(
                   "block min-w-0 bg-muted",
                   featured ? "aspect-[16/9] lg:aspect-auto" : "aspect-[16/10]",
@@ -721,6 +894,9 @@ export function NewsPage({
                   <img
                     src={imageUrl}
                     alt={item.title}
+                    loading={featured ? "eager" : "lazy"}
+                    decoding="async"
+                    fetchPriority={featured ? "high" : "auto"}
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -740,8 +916,11 @@ export function NewsPage({
                         </Badge>
                       ) : null}
                       {featured ? <Badge tone="info">Neu</Badge> : null}
+                      {item.category ? (
+                        <Badge tone="info">{item.category}</Badge>
+                      ) : null}
                     </div>
-                    <Link href={`/news/${item.id}`} className="block">
+                    <Link href={`/nachrichten/${item.id}`} className="block">
                       <h2
                         className={cn(
                           "line-clamp-2 font-semibold transition hover:text-primary",
@@ -753,9 +932,10 @@ export function NewsPage({
                     </Link>
                   </div>
 
-                  {isAdmin ? (
-                    <NewsAdminActions
+                  {isAdmin || item.author_id === userId ? (
+                    <NewsItemActions
                       item={item}
+                      canPublish={isAdmin}
                       onTogglePublish={togglePublish}
                       onEdit={openEdit}
                       onRemove={remove}
@@ -782,7 +962,7 @@ export function NewsPage({
 
                 <div className="mt-auto flex items-center justify-between gap-3 pt-2">
                   <Link
-                    href={`/news/${item.id}`}
+                    href={`/nachrichten/${item.id}`}
                     className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-card px-3 text-sm font-medium transition hover:bg-muted"
                   >
                     Weiterlesen
@@ -806,10 +986,20 @@ export function NewsPage({
               viewMode === "grid" ? "lg:col-span-2" : "",
             )}
           >
-            Keine News vorhanden.
-          </Card>
-        ) : null}
-      </section>
+        Keine Nachrichten vorhanden.
+      </Card>
+    ) : null}
+  </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingNewsRemoval)}
+        title="Nachricht löschen?"
+        description="Diese Nachricht wird dauerhaft aus dem Team-Feed entfernt."
+        detail={pendingNewsRemoval?.title}
+        confirmLabel="Nachricht löschen"
+        onCancel={() => setPendingNewsRemoval(null)}
+        onConfirm={confirmRemove}
+      />
     </div>
   );
 }
@@ -817,21 +1007,116 @@ export function NewsPage({
 export function NewsDetailPage({
   item,
   author,
+  comments: initialComments,
+  commentProfiles: initialCommentProfiles,
   isAdmin,
+  userId,
 }: {
   item: NewsItem;
   author: string;
+  comments: NewsComment[];
+  commentProfiles: Profile[];
   isAdmin: boolean;
+  userId: string;
 }) {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const imageUrls = item.image_urls ?? [];
   const heroImageUrl = imageUrls[0] ?? null;
+  const [comments, setComments] = useState(initialComments);
+  const [commentProfiles, setCommentProfiles] = useState(
+    initialCommentProfiles,
+  );
+  const [commentContent, setCommentContent] = useState("");
+  const [commentMessage, setCommentMessage] = useState<string | null>(null);
+  const [commentLoading, setCommentLoading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [pendingCommentRemoval, setPendingCommentRemoval] =
+    useState<NewsComment | null>(null);
+  const commentProfileById = useMemo(() => {
+    const map = new Map<string, Profile>();
+    commentProfiles.forEach((profile) => map.set(profile.id, profile));
+    return map;
+  }, [commentProfiles]);
+
+  async function reloadComments() {
+    const { data: nextComments } = await supabase
+      .from("news_comments")
+      .select("*")
+      .eq("news_id", item.id)
+      .order("created_at", { ascending: true });
+    const commentRows = (nextComments ?? []) as NewsComment[];
+    setComments(commentRows);
+
+    const profileIds = Array.from(
+      new Set(commentRows.map((comment) => comment.author_id)),
+    );
+
+    if (profileIds.length === 0) {
+      setCommentProfiles([]);
+      return;
+    }
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", profileIds);
+    setCommentProfiles((profiles ?? []) as Profile[]);
+  }
+
+  async function createComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCommentMessage(null);
+
+    const content = commentContent.trim();
+    if (!content) {
+      setCommentMessage("Kommentar ist erforderlich.");
+      return;
+    }
+
+    setCommentLoading(true);
+    const { error } = await supabase.from("news_comments").insert({
+      news_id: item.id,
+      author_id: userId,
+      content,
+    });
+    setCommentLoading(false);
+
+    if (error) {
+      setCommentMessage(error.message);
+      return;
+    }
+
+    setCommentContent("");
+    await reloadComments();
+  }
+
+  function removeComment(comment: NewsComment) {
+    setPendingCommentRemoval(comment);
+  }
+
+  async function confirmRemoveComment() {
+    const comment = pendingCommentRemoval;
+    if (!comment) return;
+    setPendingCommentRemoval(null);
+
+    const { error } = await supabase
+      .from("news_comments")
+      .delete()
+      .eq("id", comment.id);
+
+    if (error) {
+      setCommentMessage(error.message);
+      return;
+    }
+
+    await reloadComments();
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <Link
-          href="/news"
+          href="/nachrichten"
           className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition hover:bg-muted"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -847,6 +1132,7 @@ export function NewsDetailPage({
                 {item.published ? "Veröffentlicht" : "Entwurf"}
               </Badge>
             ) : null}
+            {item.category ? <Badge tone="info">{item.category}</Badge> : null}
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <UserRound className="h-3.5 w-3.5" />
               {author}
@@ -879,6 +1165,9 @@ export function NewsDetailPage({
               <img
                 src={heroImageUrl}
                 alt={item.title}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
                 className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.01]"
               />
             </div>
@@ -912,6 +1201,87 @@ export function NewsDetailPage({
         ) : null}
       </article>
 
+      <Card className="p-5 sm:p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <MessageCircle className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Kommentare</h2>
+        </div>
+
+        <form onSubmit={createComment} className="space-y-3">
+          <Field>
+            <Label htmlFor="news-comment">Kommentar</Label>
+            <Textarea
+              id="news-comment"
+              rows={3}
+              value={commentContent}
+              onChange={(event) => setCommentContent(event.target.value)}
+              placeholder="Antwort schreiben"
+              required
+            />
+          </Field>
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={commentLoading}>
+              {commentLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Kommentieren
+            </Button>
+            {commentMessage ? (
+              <p className="text-sm text-destructive">{commentMessage}</p>
+            ) : null}
+          </div>
+        </form>
+
+        <div className="mt-5 space-y-3">
+          {comments.map((comment) => {
+            const profile = commentProfileById.get(comment.author_id);
+            const commentAuthor = authorDisplayName(
+              profile,
+              "Unbekannter Nutzer",
+            );
+            const canRemove = isAdmin || comment.author_id === userId;
+
+            return (
+              <div
+                key={comment.id}
+                className="rounded-md border border-border bg-muted/35 px-3 py-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{commentAuthor}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(comment.created_at)}
+                    </p>
+                  </div>
+                  {canRemove ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeComment(comment)}
+                      title="Kommentar löschen"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/85">
+                  {comment.content}
+                </p>
+              </div>
+            );
+          })}
+
+          {comments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Noch keine Kommentare vorhanden.
+            </p>
+          ) : null}
+        </div>
+      </Card>
+
       {lightboxIndex !== null ? (
         <NewsLightbox
           imageUrls={imageUrls}
@@ -921,36 +1291,56 @@ export function NewsDetailPage({
           onClose={() => setLightboxIndex(null)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingCommentRemoval)}
+        title="Kommentar löschen?"
+        description="Der Kommentar wird dauerhaft entfernt."
+        detail={
+          pendingCommentRemoval ? (
+            <span className="line-clamp-3 block">
+              {pendingCommentRemoval.content}
+            </span>
+          ) : null
+        }
+        confirmLabel="Kommentar löschen"
+        onCancel={() => setPendingCommentRemoval(null)}
+        onConfirm={confirmRemoveComment}
+      />
     </div>
   );
 }
 
-function NewsAdminActions({
+function NewsItemActions({
   item,
+  canPublish,
   onTogglePublish,
   onEdit,
   onRemove,
 }: {
   item: NewsItem;
+  canPublish: boolean;
   onTogglePublish: (item: NewsItem) => void;
   onEdit: (item: NewsItem) => void;
   onRemove: (item: NewsItem) => void;
 }) {
   return (
     <div className="flex shrink-0 gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={() => onTogglePublish(item)}
-        title={item.published ? "Unveröffentlichen" : "Veröffentlichen"}
-      >
-        {item.published ? (
-          <EyeOff className="h-4 w-4" />
-        ) : (
-          <Eye className="h-4 w-4" />
-        )}
-      </Button>
+      {canPublish ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onTogglePublish(item)}
+          title={item.published ? "Unveröffentlichen" : "Veröffentlichen"}
+        >
+          {item.published ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="ghost"
@@ -1002,6 +1392,8 @@ function NewsImageGallery({
             <img
               src={url}
               alt={`${title} Bild ${index + 1}`}
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
             />
           </div>
@@ -1089,6 +1481,7 @@ function NewsLightbox({
         <img
           src={activeImageUrl}
           alt={`${title} Bild ${activeIndex + 1}`}
+          decoding="async"
           className="max-h-[86vh] max-w-[92vw] rounded-md object-contain shadow-2xl"
         />
         {hasMultipleImages ? (

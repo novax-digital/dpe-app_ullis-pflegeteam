@@ -3,9 +3,11 @@ import type {
   HTMLAttributes,
   InputHTMLAttributes,
   LabelHTMLAttributes,
+  ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
@@ -198,5 +200,78 @@ export function Notice({
       className={cn("rounded-md border px-3 py-2 text-sm", tones[tone], className)}
       {...props}
     />
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  detail,
+  confirmLabel = "Löschen",
+  cancelLabel = "Abbrechen",
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  description: ReactNode;
+  detail?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="w-full max-w-md overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex gap-4 p-5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-700">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <h2
+              id="confirm-dialog-title"
+              className="text-lg font-semibold tracking-normal text-foreground"
+            >
+              {title}
+            </h2>
+            <div className="text-sm leading-6 text-muted-foreground">
+              {description}
+            </div>
+            {detail ? (
+              <div className="rounded-md border border-border bg-muted/45 px-3 py-2 text-sm font-medium text-foreground">
+                {detail}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-col-reverse gap-2 border-t border-border bg-muted/35 px-5 py-4 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            onClick={() => {
+              void onConfirm();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -3,6 +3,8 @@ import type { Database } from "@/lib/database.types";
 export type EBikeReservationSettings =
   Database["public"]["Tables"]["ebike_reservation_settings"]["Row"];
 
+export const EBIKE_RESERVATION_MAX_BOOKING_DAYS = 7;
+
 export const DEFAULT_EBIKE_SAFETY_CONFIRMATION_TEXT = `Bitte beachte bei jeder Nutzung des E-Bikes:
 
 - Halte dich jederzeit an die Verkehrsregeln.
@@ -14,6 +16,7 @@ Mit deiner Bestätigung übernimmst du diese Hinweise für deine Reservierung.`;
 
 export const DEFAULT_EBIKE_RESERVATION_SETTINGS: EBikeReservationSettings = {
   id: "default",
+  max_booking_days: EBIKE_RESERVATION_MAX_BOOKING_DAYS,
   safety_confirmation_enabled: true,
   safety_confirmation_text: DEFAULT_EBIKE_SAFETY_CONFIRMATION_TEXT,
   created_at: "",
@@ -23,7 +26,22 @@ export const DEFAULT_EBIKE_RESERVATION_SETTINGS: EBikeReservationSettings = {
 export function normalizeEBikeReservationSettings(
   row: EBikeReservationSettings | null | undefined,
 ) {
-  return row ?? DEFAULT_EBIKE_RESERVATION_SETTINGS;
+  const settings = row ?? DEFAULT_EBIKE_RESERVATION_SETTINGS;
+
+  return {
+    ...settings,
+    max_booking_days: Math.min(
+      EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+      Math.max(
+        1,
+        Math.floor(
+          Number(
+            settings.max_booking_days ?? EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+          ) || EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+        ),
+      ),
+    ),
+  };
 }
 
 export function needsEBikeSafetyConfirmation(

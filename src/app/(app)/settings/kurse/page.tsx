@@ -10,7 +10,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsCoursesRoute() {
-  const { profile, roles } = await getUserContext();
+  const { roles } = await getUserContext();
 
   if (!roles.includes("admin")) {
     return <AccessDenied />;
@@ -28,7 +28,6 @@ export default async function SettingsCoursesRoute() {
   return (
     <SettingsPage
       mode="courses"
-      profile={profile}
       isAdmin
       initialHealthCourseSettings={healthCourseSettings}
     />

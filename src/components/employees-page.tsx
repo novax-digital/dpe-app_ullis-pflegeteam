@@ -49,7 +49,6 @@ export function EmployeesPage({
   const [showForm, setShowForm] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [position, setPosition] = useState(positions[2]);
   const [role, setRole] = useState<AppRole>("employee");
 
@@ -79,7 +78,6 @@ export function EmployeesPage({
   function resetForm() {
     setFullName("");
     setEmail("");
-    setPassword("");
     setPosition(positions[2]);
     setRole("employee");
   }
@@ -89,8 +87,8 @@ export function EmployeesPage({
     setMessage(null);
     setSuccess(null);
 
-    if (!fullName.trim() || !email.trim() || password.length < 8) {
-      setMessage("Name, E-Mail und ein Passwort mit mindestens 8 Zeichen sind erforderlich.");
+    if (!fullName.trim() || !email.trim()) {
+      setMessage("Name und E-Mail sind erforderlich.");
       return;
     }
 
@@ -102,7 +100,6 @@ export function EmployeesPage({
       body: JSON.stringify({
         full_name: fullName,
         email,
-        password,
         position,
         role,
       }),
@@ -116,7 +113,7 @@ export function EmployeesPage({
       return;
     }
 
-    setSuccess("Mitarbeiter:in wurde angelegt.");
+    setSuccess("Mitarbeiter:in wurde angelegt und per E-Mail eingeladen.");
     resetForm();
     setShowForm(false);
     await reload();
@@ -159,16 +156,6 @@ export function EmployeesPage({
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label htmlFor="employee-password">Passwort</Label>
-                <Input
-                  id="employee-password"
-                  type="text"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
                   required
                 />
               </Field>

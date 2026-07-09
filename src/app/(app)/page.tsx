@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { redirect } from "next/navigation";
 import { Bike, CalendarDays, HeartPulse, Newspaper, Users } from "lucide-react";
 import { Badge, Card } from "@/components/ui";
 import { ROLE_LABEL } from "@/lib/auth";
@@ -9,9 +11,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function PinboardPage() {
   const supabase = await createSupabaseServerClient();
   const { user, profile, primaryRole } = await getUserContext();
+
+  if (!user) {
+    redirect("/login");
+  }
+
   const now = new Date();
   const in14Days = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
@@ -39,13 +46,13 @@ export default async function DashboardPage() {
       : Promise.resolve({ count: null }),
     supabase
       .from("news")
-      .select("id, title, author_id, published, published_at, created_at")
+      .select("id, title, author_id, category, published, published_at, created_at")
       .order("created_at", { ascending: false })
       .limit(3),
     supabase
       .from("ebike_reservations")
       .select("id, start_time, end_time, purpose")
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .eq("status", "active")
       .gte("end_time", now.toISOString())
       .order("start_time", { ascending: true })
@@ -53,7 +60,7 @@ export default async function DashboardPage() {
     supabase
       .from("course_registrations")
       .select("course_id, health_courses(id, title, start_time, end_time, location)")
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .eq("status", "registered")
       .limit(8),
   ]);
@@ -105,12 +112,15 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <section
         className="relative min-h-[300px] overflow-hidden rounded-lg border border-border bg-muted shadow-sm sm:min-h-[340px]"
-        style={{
-          backgroundImage: "url('/images/team-collage.png')",
-          backgroundPosition: "center 45%",
-          backgroundSize: "cover",
-        }}
       >
+        <Image
+          src="/images/hintergrund-bild.webp"
+          alt=""
+          fill
+          sizes="(max-width: 768px) 100vw, 1280px"
+          preload
+          className="object-cover object-[center_45%]"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-white via-white/65 to-white/5" />
         <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
           <div className="max-w-3xl space-y-3">
@@ -147,7 +157,7 @@ export default async function DashboardPage() {
           icon={<Users className="h-5 w-5" />}
         />
         <StatCard
-          label="Aktuelle News"
+          label="Nachrichten"
           value={newsResult.data?.length ?? 0}
           icon={<Newspaper className="h-5 w-5" />}
         />
@@ -201,7 +211,7 @@ export default async function DashboardPage() {
         <Card className="p-5">
           <div className="mb-4 flex items-center gap-2">
             <Newspaper className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">News</h2>
+            <h2 className="font-semibold">Nachrichten</h2>
           </div>
           <div className="space-y-3">
             {newsResult.data?.map((item) => (
@@ -216,6 +226,9 @@ export default async function DashboardPage() {
                       {item.published ? "Live" : "Entwurf"}
                     </Badge>
                   ) : null}
+                  {item.category ? (
+                    <Badge tone="info">{item.category}</Badge>
+                  ) : null}
                 </div>
                 <p className="mt-1 text-muted-foreground">
                   {newsProfileById.get(item.author_id)?.full_name?.trim() ||
@@ -226,7 +239,9 @@ export default async function DashboardPage() {
               </div>
             ))}
             {!newsResult.data?.length ? (
-              <p className="text-sm text-muted-foreground">Keine News vorhanden.</p>
+              <p className="text-sm text-muted-foreground">
+                Keine Nachrichten vorhanden.
+              </p>
             ) : null}
           </div>
         </Card>

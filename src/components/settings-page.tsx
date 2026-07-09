@@ -4,16 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 import {
+  Bell,
   Bike,
+  CalendarDays,
   HeartPulse,
   ListChecks,
   Loader2,
   MapPin,
+  Newspaper,
   Plus,
   Save,
   ShieldCheck,
   Tags,
-  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -24,10 +26,8 @@ import {
   Label,
   Notice,
   PageHeader,
-  Select,
   Textarea,
 } from "@/components/ui";
-import type { Profile } from "@/lib/auth";
 import {
   normalizeEBikeAvailability,
   shortTime,
@@ -35,30 +35,48 @@ import {
   type EBikeAvailabilityWindow,
 } from "@/lib/e-bike-availability";
 import {
+  EBIKE_RESERVATION_MAX_BOOKING_DAYS,
   normalizeEBikeReservationSettings,
   type EBikeReservationSettings,
 } from "@/lib/e-bike-reservation-settings";
 import {
+  HEALTH_COURSE_REMINDER_MAX_DAYS,
   normalizeHealthCourseOptionList,
   normalizeHealthCourseSettings,
   type HealthCourseSettings,
 } from "@/lib/health-course-settings";
+import {
+  normalizeNewsCategoryList,
+  normalizeNewsSettings,
+  type NewsSettings,
+} from "@/lib/news-settings";
+import {
+  CALENDAR_REMINDER_MAX_DAYS,
+  normalizeCalendarSettings,
+  type CalendarSettings,
+} from "@/lib/calendar-settings";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
 
-export type SettingsMode = "profile" | "e-bikes" | "courses";
+export type SettingsMode = "e-bikes" | "messages" | "calendar" | "courses";
 
 const settingsItems = [
-  {
-    href: "/settings/profil",
-    label: "Profil",
-    icon: UserRound,
-    adminOnly: false,
-  },
   {
     href: "/settings/e-bikes",
     label: "E-Bikes",
     icon: Bike,
+    adminOnly: true,
+  },
+  {
+    href: "/settings/nachrichten",
+    label: "Nachrichten",
+    icon: Newspaper,
+    adminOnly: true,
+  },
+  {
+    href: "/settings/kalender",
+    label: "Kalender",
+    icon: CalendarDays,
     adminOnly: true,
   },
   {
@@ -106,16 +124,6 @@ function SettingsSectionNav({
   );
 }
 
-const positions = [
-  "Pflegedienstleitung",
-  "Stellv. Pflegedienstleitung",
-  "Pflegefachkraft",
-  "Pflegehelfer:in",
-  "Verwaltung",
-  "Auszubildende:r",
-  "Sonstige",
-];
-
 function settingsErrorMessage(message: string) {
   const lower = message.toLowerCase();
 
@@ -131,18 +139,20 @@ function settingsErrorMessage(message: string) {
 
 export function SettingsPage({
   mode,
-  profile,
   isAdmin,
   initialEBikeAvailability,
   initialEBikeReservationSettings,
   initialHealthCourseSettings,
+  initialNewsSettings,
+  initialCalendarSettings,
 }: {
   mode: SettingsMode;
-  profile: Profile | null;
   isAdmin: boolean;
   initialEBikeAvailability?: EBikeAvailabilityWindow[];
   initialEBikeReservationSettings?: EBikeReservationSettings;
   initialHealthCourseSettings?: HealthCourseSettings;
+  initialNewsSettings?: NewsSettings;
+  initialCalendarSettings?: CalendarSettings;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const normalizedReservationSettings = normalizeEBikeReservationSettings(
@@ -151,10 +161,17 @@ export function SettingsPage({
   const normalizedHealthCourseSettings = normalizeHealthCourseSettings(
     initialHealthCourseSettings ?? null,
   );
-  const [fullName, setFullName] = useState(profile?.full_name ?? "");
-  const [position, setPosition] = useState(profile?.position ?? "");
+  const normalizedNewsSettings = normalizeNewsSettings(
+    initialNewsSettings ?? null,
+  );
+  const normalizedCalendarSettings = normalizeCalendarSettings(
+    initialCalendarSettings ?? null,
+  );
   const [availability, setAvailability] = useState(() =>
     normalizeEBikeAvailability(initialEBikeAvailability ?? []),
+  );
+  const [maxBookingDays, setMaxBookingDays] = useState(
+    normalizedReservationSettings.max_booking_days,
   );
   const [safetyConfirmationEnabled, setSafetyConfirmationEnabled] = useState(
     normalizedReservationSettings.safety_confirmation_enabled,
@@ -172,6 +189,16 @@ export function SettingsPage({
       ? normalizedHealthCourseSettings.categories
       : [""],
   );
+  const [messageCategories, setMessageCategories] = useState(() =>
+    normalizedNewsSettings.categories.length > 0
+      ? normalizedNewsSettings.categories
+      : [""],
+  );
+  const [calendarEmailRemindersEnabled, setCalendarEmailRemindersEnabled] =
+    useState(normalizedCalendarSettings.email_reminders_enabled);
+  const [calendarReminderDaysBefore, setCalendarReminderDaysBefore] = useState(
+    normalizedCalendarSettings.reminder_days_before,
+  );
   const [
     allowSameCourseMultipleRegistrations,
     setAllowSameCourseMultipleRegistrations,
@@ -184,42 +211,19 @@ export function SettingsPage({
   ] = useState(
     normalizedHealthCourseSettings.max_active_registrations_per_user,
   );
+  const [courseEmailRemindersEnabled, setCourseEmailRemindersEnabled] =
+    useState(normalizedHealthCourseSettings.email_reminders_enabled);
+  const [courseReminderDaysBefore, setCourseReminderDaysBefore] = useState(
+    normalizedHealthCourseSettings.reminder_days_before,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [bookingRulesLoading, setBookingRulesLoading] = useState(false);
   const [safetyLoading, setSafetyLoading] = useState(false);
+  const [messageSettingsLoading, setMessageSettingsLoading] = useState(false);
+  const [calendarSettingsLoading, setCalendarSettingsLoading] = useState(false);
   const [courseSettingsLoading, setCourseSettingsLoading] = useState(false);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage(null);
-    setSuccess(null);
-
-    if (!profile) {
-      setMessage("Profil konnte nicht geladen werden.");
-      return;
-    }
-
-    setLoading(true);
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName.trim() || null,
-        position: position || null,
-      })
-      .eq("id", profile.id);
-
-    setLoading(false);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setSuccess("Profil gespeichert.");
-  }
 
   function updateAvailability(
     dayOfWeek: number,
@@ -270,6 +274,42 @@ export function SettingsPage({
     setSuccess("E-Bike-Zeiten gespeichert.");
   }
 
+  async function saveBookingRules(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setSuccess(null);
+
+    const normalizedMaxBookingDays = Math.max(
+      1,
+      Math.min(
+        EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+        Math.floor(Number(maxBookingDays) || 1),
+      ),
+    );
+
+    setBookingRulesLoading(true);
+
+    const { error } = await supabase.from("ebike_reservation_settings").upsert(
+      {
+        id: "default",
+        max_booking_days: normalizedMaxBookingDays,
+        safety_confirmation_enabled: safetyConfirmationEnabled,
+        safety_confirmation_text: safetyConfirmationText.trim(),
+      },
+      { onConflict: "id" },
+    );
+
+    setBookingRulesLoading(false);
+
+    if (error) {
+      setMessage(settingsErrorMessage(error.message));
+      return;
+    }
+
+    setMaxBookingDays(normalizedMaxBookingDays);
+    setSuccess("E-Bike-Buchungsregeln gespeichert.");
+  }
+
   async function saveSafetyConfirmation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -288,6 +328,13 @@ export function SettingsPage({
     const { error } = await supabase.from("ebike_reservation_settings").upsert(
       {
         id: "default",
+        max_booking_days: Math.max(
+          1,
+          Math.min(
+            EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+            Math.floor(Number(maxBookingDays) || 1),
+          ),
+        ),
         safety_confirmation_enabled: safetyConfirmationEnabled,
         safety_confirmation_text: safetyConfirmationText.trim(),
       },
@@ -330,6 +377,82 @@ export function SettingsPage({
     });
   }
 
+  function updateMessageCategory(index: number, value: string) {
+    setMessageCategories((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? value : item)),
+    );
+  }
+
+  function removeMessageCategory(index: number) {
+    setMessageCategories((current) => {
+      const next = current.filter((_, itemIndex) => itemIndex !== index);
+      return next.length > 0 ? next : [""];
+    });
+  }
+
+  async function saveMessageSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setSuccess(null);
+
+    const normalizedCategories =
+      normalizeNewsCategoryList(messageCategories);
+
+    setMessageSettingsLoading(true);
+
+    const { error } = await supabase.from("news_settings").upsert(
+      {
+        id: "default",
+        categories: normalizedCategories,
+      },
+      { onConflict: "id" },
+    );
+
+    setMessageSettingsLoading(false);
+
+    if (error) {
+      setMessage(settingsErrorMessage(error.message));
+      return;
+    }
+
+    setMessageCategories(
+      normalizedCategories.length > 0 ? normalizedCategories : [""],
+    );
+    setSuccess("Nachrichten-Einstellungen gespeichert.");
+  }
+
+  async function saveCalendarSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setSuccess(null);
+
+    const normalizedReminderDaysBefore = Math.min(
+      CALENDAR_REMINDER_MAX_DAYS,
+      Math.max(1, Math.floor(Number(calendarReminderDaysBefore) || 1)),
+    );
+
+    setCalendarSettingsLoading(true);
+
+    const { error } = await supabase.from("calendar_settings").upsert(
+      {
+        id: "default",
+        email_reminders_enabled: calendarEmailRemindersEnabled,
+        reminder_days_before: normalizedReminderDaysBefore,
+      },
+      { onConflict: "id" },
+    );
+
+    setCalendarSettingsLoading(false);
+
+    if (error) {
+      setMessage(settingsErrorMessage(error.message));
+      return;
+    }
+
+    setCalendarReminderDaysBefore(normalizedReminderDaysBefore);
+    setSuccess("Kalender-Einstellungen gespeichert.");
+  }
+
   async function saveHealthCourseSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -339,6 +462,10 @@ export function SettingsPage({
       normalizeHealthCourseOptionList(courseLocations);
     const normalizedCategories =
       normalizeHealthCourseOptionList(courseCategories);
+    const normalizedReminderDaysBefore = Math.min(
+      HEALTH_COURSE_REMINDER_MAX_DAYS,
+      Math.max(1, Math.floor(Number(courseReminderDaysBefore) || 1)),
+    );
 
     setCourseSettingsLoading(true);
 
@@ -353,6 +480,8 @@ export function SettingsPage({
           0,
           Math.floor(maxActiveCourseRegistrations || 0),
         ),
+        email_reminders_enabled: courseEmailRemindersEnabled,
+        reminder_days_before: normalizedReminderDaysBefore,
       },
       { onConflict: "id" },
     );
@@ -373,6 +502,7 @@ export function SettingsPage({
     setMaxActiveCourseRegistrations(
       Math.max(0, Math.floor(maxActiveCourseRegistrations || 0)),
     );
+    setCourseReminderDaysBefore(normalizedReminderDaysBefore);
     setSuccess("Kurs-Einstellungen gespeichert.");
   }
 
@@ -381,63 +511,19 @@ export function SettingsPage({
       <PageHeader
         title="Einstellungen"
         eyebrow={
-          mode === "profile"
-            ? "Mein Profil"
-            : mode === "e-bikes"
-              ? "Admin · E-Bikes"
-              : "Admin · Gesundheitskurse"
+          mode === "e-bikes"
+            ? "Admin · E-Bikes"
+            : mode === "messages"
+              ? "Admin · Nachrichten"
+              : mode === "calendar"
+                ? "Admin · Kalender"
+                : "Admin · Gesundheitskurse"
         }
         action={<SettingsSectionNav isAdmin={isAdmin} />}
       />
 
       {message ? <Notice tone="danger">{message}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
-
-      {mode === "profile" ? (
-        <Card className="p-5">
-          <form onSubmit={save} className="space-y-4">
-            <Field>
-              <Label htmlFor="settings-email">E-Mail</Label>
-              <Input
-                id="settings-email"
-                value={profile?.email ?? ""}
-                disabled
-              />
-            </Field>
-            <Field>
-              <Label htmlFor="settings-name">Name</Label>
-              <Input
-                id="settings-name"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <Label htmlFor="settings-position">Berufsbezeichnung</Label>
-              <Select
-                id="settings-position"
-                value={position}
-                onChange={(event) => setPosition(event.target.value)}
-              >
-                <option value="">Nicht gesetzt</option>
-                {positions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Speichern
-            </Button>
-          </form>
-        </Card>
-      ) : null}
 
       {isAdmin && mode === "e-bikes" ? (
         <>
@@ -515,6 +601,50 @@ export function SettingsPage({
           </Card>
 
           <Card className="p-5">
+            <form onSubmit={saveBookingRules} className="space-y-4">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold">E-Bike Buchungsregeln</h2>
+              </div>
+
+              <Field>
+                <Label htmlFor="ebike-max-booking-days">
+                  Maximale zusammenhängende Buchungsdauer
+                </Label>
+                <Input
+                  id="ebike-max-booking-days"
+                  type="number"
+                  min={1}
+                  max={EBIKE_RESERVATION_MAX_BOOKING_DAYS}
+                  step={1}
+                  value={maxBookingDays}
+                  onChange={(event) =>
+                    setMaxBookingDays(
+                      Math.min(
+                        EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+                        Math.max(1, Number(event.target.value) || 1),
+                      ),
+                    )
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Wert in Tagen. Maximal {EBIKE_RESERVATION_MAX_BOOKING_DAYS}{" "}
+                  Tage, also bis zu 1 Woche.
+                </p>
+              </Field>
+
+              <Button type="submit" disabled={bookingRulesLoading}>
+                {bookingRulesLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Buchungsregeln speichern
+              </Button>
+            </form>
+          </Card>
+
+          <Card className="p-5">
             <form onSubmit={saveSafetyConfirmation} className="space-y-4">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" />
@@ -572,6 +702,144 @@ export function SettingsPage({
             </form>
           </Card>
         </>
+      ) : null}
+
+      {isAdmin && mode === "messages" ? (
+        <Card className="p-5">
+          <form onSubmit={saveMessageSettings} className="space-y-5">
+            <div className="flex items-center gap-2">
+              <Newspaper className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold">Nachrichten</h2>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Tags className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Kategorien</h3>
+              </div>
+
+              <div className="space-y-2">
+                {messageCategories.map((category, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      value={category}
+                      placeholder="z.B. Wichtig"
+                      onChange={(event) =>
+                        updateMessageCategory(index, event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeMessageCategory(index)}
+                      title="Kategorie entfernen"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setMessageCategories((current) => [...current, ""])
+                }
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Kategorie hinzufügen
+              </Button>
+            </div>
+
+            <Button type="submit" disabled={messageSettingsLoading}>
+              {messageSettingsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Nachrichten-Einstellungen speichern
+            </Button>
+          </form>
+        </Card>
+      ) : null}
+
+      {isAdmin && mode === "calendar" ? (
+        <Card className="p-5">
+          <form onSubmit={saveCalendarSettings} className="space-y-5">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold">Kalender</h2>
+            </div>
+
+            <label className="flex items-start gap-3 rounded-md border border-border bg-muted/30 p-4 text-sm">
+              <input
+                type="checkbox"
+                checked={calendarEmailRemindersEnabled}
+                onChange={(event) =>
+                  setCalendarEmailRemindersEnabled(event.target.checked)
+                }
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <span>
+                <span className="block font-medium">
+                  E-Mail-Erinnerungen an Termine senden
+                </span>
+                <span className="mt-1 block text-muted-foreground">
+                  Wenn aktiviert, werden fällige Erinnerungen an
+                  Mitarbeiter:innen und Admins gesendet.
+                </span>
+              </span>
+            </label>
+
+            <Field>
+              <Label htmlFor="calendar-reminder-days-before">
+                Erinnerung wie viele Tage vorher?
+              </Label>
+              <Input
+                id="calendar-reminder-days-before"
+                type="number"
+                min={1}
+                max={CALENDAR_REMINDER_MAX_DAYS}
+                step={1}
+                value={calendarReminderDaysBefore}
+                disabled={!calendarEmailRemindersEnabled}
+                onChange={(event) =>
+                  setCalendarReminderDaysBefore(
+                    Math.min(
+                      CALENDAR_REMINDER_MAX_DAYS,
+                      Math.max(1, Number(event.target.value) || 1),
+                    ),
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Maximal {CALENDAR_REMINDER_MAX_DAYS} Tage vorher. Der Versand
+                erfolgt einmal pro Termin.
+              </p>
+            </Field>
+
+            <div className="rounded-md border border-border bg-muted/35 p-3 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">E-Mail-Inhalt</p>
+              <p className="mt-1">
+                Die Erinnerung enthält den Hinweis „Kleine Erinnerung an einen
+                bevorstehenden Termin“, Titel, Zeitpunkt, Ort, kurzen Auszug und
+                einen Button zum Kalender.
+              </p>
+            </div>
+
+            <Button type="submit" disabled={calendarSettingsLoading}>
+              {calendarSettingsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Kalender-Einstellungen speichern
+            </Button>
+          </form>
+        </Card>
       ) : null}
 
       {isAdmin && mode === "courses" ? (
@@ -718,6 +986,68 @@ export function SettingsPage({
                     noch nicht beendete Kursanmeldungen.
                   </p>
                 </Field>
+              </div>
+
+              <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Benachrichtigungen</h3>
+                </div>
+
+                <label className="flex items-start gap-3 rounded-md border border-border bg-card p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={courseEmailRemindersEnabled}
+                    onChange={(event) =>
+                      setCourseEmailRemindersEnabled(event.target.checked)
+                    }
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      E-Mail-Erinnerungen an eingetragene Mitglieder senden
+                    </span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Wenn aktiviert, erhalten nur die Personen eine Erinnerung,
+                      die im jeweiligen Kurs angemeldet sind.
+                    </span>
+                  </span>
+                </label>
+
+                <Field>
+                  <Label htmlFor="course-reminder-days-before">
+                    Erinnerung wie viele Tage vorher?
+                  </Label>
+                  <Input
+                    id="course-reminder-days-before"
+                    type="number"
+                    min={1}
+                    max={HEALTH_COURSE_REMINDER_MAX_DAYS}
+                    step={1}
+                    value={courseReminderDaysBefore}
+                    disabled={!courseEmailRemindersEnabled}
+                    onChange={(event) =>
+                      setCourseReminderDaysBefore(
+                        Math.min(
+                          HEALTH_COURSE_REMINDER_MAX_DAYS,
+                          Math.max(1, Number(event.target.value) || 1),
+                        ),
+                      )
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximal {HEALTH_COURSE_REMINDER_MAX_DAYS} Tage vorher. Der
+                    Versand erfolgt einmal pro Kurstermin.
+                  </p>
+                </Field>
+
+                <div className="rounded-md border border-border bg-card p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">E-Mail-Inhalt</p>
+                  <p className="mt-1">
+                    Die Erinnerung enthält Titel, Zeitpunkt, Ort, kurzen Auszug
+                    und einen Button zur Kursübersicht.
+                  </p>
+                </div>
               </div>
 
               <Button type="submit" disabled={courseSettingsLoading}>

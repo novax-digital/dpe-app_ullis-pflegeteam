@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import {
   EBIKE_IMAGE_ACCEPTED_TYPES,
   EBIKE_IMAGE_BUCKET,
-  EBIKE_IMAGE_EXTENSION_BY_TYPE,
   EBIKE_IMAGE_MAX_BYTES,
 } from "@/lib/ebike-images";
+import { optimizeUploadedImage } from "@/lib/image-upload-processing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -98,20 +98,20 @@ export async function POST(request: Request) {
 
   if (file.size > EBIKE_IMAGE_MAX_BYTES) {
     return NextResponse.json(
-      { error: "Das Bild darf maximal 5 MB groß sein." },
+      { error: "Das Bild darf maximal 12 MB groß sein." },
       { status: 400 },
     );
   }
 
   try {
     admin = await ensureEbikeImageBucket();
-    const extension = EBIKE_IMAGE_EXTENSION_BY_TYPE[file.type] ?? "jpg";
-    const filePath = `ebikes/${crypto.randomUUID()}.${extension}`;
+    const optimizedImage = await optimizeUploadedImage({ file });
+    const filePath = `ebikes/${crypto.randomUUID()}.${optimizedImage.extension}`;
     const { error: uploadError } = await admin.storage
       .from(EBIKE_IMAGE_BUCKET)
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        contentType: file.type,
+      .upload(filePath, optimizedImage.blob, {
+        cacheControl: "31536000",
+        contentType: optimizedImage.contentType,
       });
 
     if (uploadError) {
@@ -122,7 +122,11 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = admin.storage.from(EBIKE_IMAGE_BUCKET).getPublicUrl(filePath);
 
-    return NextResponse.json({ publicUrl });
+    return NextResponse.json({
+      publicUrl,
+      originalBytes: optimizedImage.originalBytes,
+      optimizedBytes: optimizedImage.optimizedBytes,
+    });
   } catch (error) {
     return NextResponse.json(
       {

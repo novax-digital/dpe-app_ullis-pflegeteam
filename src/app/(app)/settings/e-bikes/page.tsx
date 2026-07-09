@@ -14,7 +14,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsEBikesRoute() {
-  const { profile, roles } = await getUserContext();
+  const { roles } = await getUserContext();
 
   if (!roles.includes("admin")) {
     return <AccessDenied />;
@@ -40,7 +40,6 @@ export default async function SettingsEBikesRoute() {
   return (
     <SettingsPage
       mode="e-bikes"
-      profile={profile}
       isAdmin
       initialEBikeAvailability={ebikeAvailability}
       initialEBikeReservationSettings={ebikeReservationSettings}

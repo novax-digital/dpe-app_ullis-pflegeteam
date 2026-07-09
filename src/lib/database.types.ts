@@ -23,6 +23,7 @@ export type Database = {
           end_time: string
           id: string
           location: string | null
+          reminder_sent_at: string | null
           start_time: string
           title: string
           updated_at: string
@@ -35,6 +36,7 @@ export type Database = {
           end_time: string
           id?: string
           location?: string | null
+          reminder_sent_at?: string | null
           start_time: string
           title: string
           updated_at?: string
@@ -47,8 +49,33 @@ export type Database = {
           end_time?: string
           id?: string
           location?: string | null
+          reminder_sent_at?: string | null
           start_time?: string
           title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      calendar_settings: {
+        Row: {
+          created_at: string
+          email_reminders_enabled: boolean
+          id: string
+          reminder_days_before: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email_reminders_enabled?: boolean
+          id?: string
+          reminder_days_before?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email_reminders_enabled?: boolean
+          id?: string
+          reminder_days_before?: number
           updated_at?: string
         }
         Relationships: []
@@ -214,6 +241,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          max_booking_days: number
           safety_confirmation_enabled: boolean
           safety_confirmation_text: string
           updated_at: string
@@ -221,6 +249,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          max_booking_days?: number
           safety_confirmation_enabled?: boolean
           safety_confirmation_text?: string
           updated_at?: string
@@ -228,6 +257,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          max_booking_days?: number
           safety_confirmation_enabled?: boolean
           safety_confirmation_text?: string
           updated_at?: string
@@ -288,6 +318,7 @@ export type Database = {
           max_participants: number
           notes: string | null
           provider_id: string
+          reminder_sent_at: string | null
           start_time: string
           status: Database["public"]["Enums"]["course_status"]
           title: string
@@ -304,6 +335,7 @@ export type Database = {
           max_participants?: number
           notes?: string | null
           provider_id: string
+          reminder_sent_at?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["course_status"]
           title: string
@@ -320,6 +352,7 @@ export type Database = {
           max_participants?: number
           notes?: string | null
           provider_id?: string
+          reminder_sent_at?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["course_status"]
           title?: string
@@ -332,27 +365,33 @@ export type Database = {
           allow_same_course_multiple_registrations: boolean
           categories: string[]
           created_at: string
+          email_reminders_enabled: boolean
           id: string
           locations: string[]
           max_active_registrations_per_user: number
+          reminder_days_before: number
           updated_at: string
         }
         Insert: {
           allow_same_course_multiple_registrations?: boolean
           categories?: string[]
           created_at?: string
+          email_reminders_enabled?: boolean
           id?: string
           locations?: string[]
           max_active_registrations_per_user?: number
+          reminder_days_before?: number
           updated_at?: string
         }
         Update: {
           allow_same_course_multiple_registrations?: boolean
           categories?: string[]
           created_at?: string
+          email_reminders_enabled?: boolean
           id?: string
           locations?: string[]
           max_active_registrations_per_user?: number
+          reminder_days_before?: number
           updated_at?: string
         }
         Relationships: []
@@ -360,11 +399,13 @@ export type Database = {
       news: {
         Row: {
           author_id: string
+          category: string | null
           content: string
           created_at: string
           excerpt: string | null
           id: string
           image_urls: string[]
+          notification_sent_at: string | null
           published: boolean
           published_at: string | null
           title: string
@@ -372,11 +413,13 @@ export type Database = {
         }
         Insert: {
           author_id: string
+          category?: string | null
           content?: string
           created_at?: string
           excerpt?: string | null
           id?: string
           image_urls?: string[]
+          notification_sent_at?: string | null
           published?: boolean
           published_at?: string | null
           title: string
@@ -384,14 +427,72 @@ export type Database = {
         }
         Update: {
           author_id?: string
+          category?: string | null
           content?: string
           created_at?: string
           excerpt?: string | null
           id?: string
           image_urls?: string[]
+          notification_sent_at?: string | null
           published?: boolean
           published_at?: string | null
           title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      news_comments: {
+        Row: {
+          author_id: string
+          content: string
+          created_at: string
+          id: string
+          news_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          content: string
+          created_at?: string
+          id?: string
+          news_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          news_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "news_comments_news_id_fkey"
+            columns: ["news_id"]
+            isOneToOne: false
+            referencedRelation: "news"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      news_settings: {
+        Row: {
+          categories: string[]
+          created_at: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          categories?: string[]
+          created_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          categories?: string[]
+          created_at?: string
+          id?: string
           updated_at?: string
         }
         Relationships: []

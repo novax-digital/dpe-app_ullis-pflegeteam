@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { CalendarPage } from "@/components/calendar-page";
 import { getUserContext } from "@/lib/auth-server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -6,6 +7,11 @@ export const dynamic = "force-dynamic";
 
 export default async function CalendarRoute() {
   const context = await getUserContext();
+
+  if (!context.user) {
+    redirect("/login");
+  }
+
   const supabase = await createSupabaseServerClient();
 
   const [eventsResult, coursesResult] = await Promise.all([
@@ -23,7 +29,7 @@ export default async function CalendarRoute() {
     <CalendarPage
       initialCalendarEvents={eventsResult.data ?? []}
       initialCourses={coursesResult.data ?? []}
-      userId={context.user!.id}
+      userId={context.user.id}
       isAdmin={context.roles.includes("admin")}
       initialMonth={new Date().toISOString()}
     />

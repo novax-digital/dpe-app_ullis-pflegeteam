@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Newspaper,
   Settings,
-  UserRound,
   Users,
 } from "lucide-react";
 import type { AppRole } from "@/lib/auth";
@@ -20,15 +19,15 @@ import { cn } from "@/lib/utils";
 const navItems = [
   {
     href: "/",
-    label: "Dashboard",
+    label: "Pinnwand",
     icon: LayoutDashboard,
     roles: ["admin", "employee", "physiotherapy"] as AppRole[],
   },
   {
-    href: "/news",
-    label: "News",
+    href: "/nachrichten",
+    label: "Nachrichten",
     icon: Newspaper,
-    roles: ["admin", "employee"] as AppRole[],
+    roles: ["admin", "employee", "physiotherapy"] as AppRole[],
   },
   {
     href: "/e-bikes",
@@ -89,17 +88,24 @@ const navItems = [
     href: "/settings",
     label: "Einstellungen",
     icon: Settings,
-    roles: ["admin", "employee", "physiotherapy"] as AppRole[],
+    roles: ["admin"] as AppRole[],
     children: [
-      {
-        href: "/settings/profil",
-        label: "Profil",
-        icon: UserRound,
-      },
       {
         href: "/settings/e-bikes",
         label: "E-Bikes",
         icon: Bike,
+        roles: ["admin"] as AppRole[],
+      },
+      {
+        href: "/settings/nachrichten",
+        label: "Nachrichten",
+        icon: Newspaper,
+        roles: ["admin"] as AppRole[],
+      },
+      {
+        href: "/settings/kalender",
+        label: "Kalender",
+        icon: CalendarDays,
         roles: ["admin"] as AppRole[],
       },
       {

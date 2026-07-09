@@ -36,6 +36,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
@@ -374,6 +375,10 @@ export function HealthCoursesPage({
   const [recurrenceInterval, setRecurrenceInterval] =
     useState<RecurrenceInterval>("weekly");
   const [recurrenceCount, setRecurrenceCount] = useState(10);
+  const [pendingCourseUnregister, setPendingCourseUnregister] =
+    useState<Course | null>(null);
+  const [pendingCourseRemoval, setPendingCourseRemoval] =
+    useState<Course | null>(null);
 
   const isAdmin = roles.includes("admin");
   const isPhysio = roles.includes("physiotherapy");
@@ -658,7 +663,7 @@ export function HealthCoursesPage({
 
     if (file.size > COURSE_IMAGE_MAX_BYTES) {
       setSelectedImageFile(null);
-      setMessage("Das Bild darf maximal 5 MB groß sein.");
+      setMessage("Das Bild darf maximal 12 MB groß sein.");
       return false;
     }
 
@@ -927,10 +932,18 @@ export function HealthCoursesPage({
     await reload();
   }
 
-  async function unregister(course: Course) {
+  function unregister(course: Course) {
     const registration = myRegistration(course.id);
     if (!registration) return;
-    if (!window.confirm("Kursanmeldung stornieren?")) return;
+    setPendingCourseUnregister(course);
+  }
+
+  async function confirmUnregister() {
+    const course = pendingCourseUnregister;
+    if (!course) return;
+    const registration = myRegistration(course.id);
+    setPendingCourseUnregister(null);
+    if (!registration) return;
 
     const { error } = await supabase
       .from("course_registrations")
@@ -987,8 +1000,14 @@ export function HealthCoursesPage({
     await reload();
   }
 
-  async function deleteCourse(course: Course) {
-    if (!window.confirm(`Kurs "${course.title}" löschen?`)) return;
+  function deleteCourse(course: Course) {
+    setPendingCourseRemoval(course);
+  }
+
+  async function confirmDeleteCourse() {
+    const course = pendingCourseRemoval;
+    if (!course) return;
+    setPendingCourseRemoval(null);
 
     const { error } = await supabase
       .from("health_courses")
@@ -1409,6 +1428,7 @@ export function HealthCoursesPage({
                         <img
                           src={displayedImageUrl}
                           alt="Kursbild"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -1439,7 +1459,7 @@ export function HealthCoursesPage({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {imageFile
                           ? formatFileSize(imageFile.size)
-                          : "JPG, PNG, WebP oder GIF bis 5 MB"}
+                          : "JPG, PNG, WebP oder GIF bis 12 MB"}
                       </p>
                     </div>
                     <span className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground shadow-sm transition group-hover:bg-white">
@@ -1530,6 +1550,8 @@ export function HealthCoursesPage({
                         <img
                           src={representative.image_url}
                           alt={representative.title}
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                       </div>
@@ -1782,6 +1804,8 @@ export function HealthCoursesPage({
                       <img
                         src={course.image_url}
                         alt={course.title}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
                       />
                     </div>
@@ -1905,6 +1929,8 @@ export function HealthCoursesPage({
                   <img
                     src={course.image_url}
                     alt={course.title}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 </div>
@@ -2097,6 +2123,48 @@ export function HealthCoursesPage({
           </Card>
         ) : null}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingCourseUnregister)}
+        title="Kursanmeldung stornieren?"
+        description="Deine Anmeldung wird storniert und der Platz wird wieder freigegeben."
+        detail={
+          pendingCourseUnregister ? (
+            <span className="block">
+              {pendingCourseUnregister.title}
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                {formatDate(pendingCourseUnregister.start_time)} ·{" "}
+                {formatTime(pendingCourseUnregister.start_time)}-
+                {formatTime(pendingCourseUnregister.end_time)}
+              </span>
+            </span>
+          ) : null
+        }
+        confirmLabel="Anmeldung stornieren"
+        onCancel={() => setPendingCourseUnregister(null)}
+        onConfirm={confirmUnregister}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingCourseRemoval)}
+        title="Kurs löschen?"
+        description="Dieser Kurs wird dauerhaft aus der Kursübersicht entfernt."
+        detail={
+          pendingCourseRemoval ? (
+            <span className="block">
+              {pendingCourseRemoval.title}
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                {formatDate(pendingCourseRemoval.start_time)} ·{" "}
+                {formatTime(pendingCourseRemoval.start_time)}-
+                {formatTime(pendingCourseRemoval.end_time)}
+              </span>
+            </span>
+          ) : null
+        }
+        confirmLabel="Kurs löschen"
+        onCancel={() => setPendingCourseRemoval(null)}
+        onConfirm={confirmDeleteCourse}
+      />
     </div>
   );
 }

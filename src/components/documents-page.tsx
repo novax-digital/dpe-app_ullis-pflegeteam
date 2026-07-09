@@ -28,6 +28,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
@@ -123,6 +124,8 @@ export function DocumentsPage({
   const [previewDocument, setPreviewDocument] = useState<DocumentItem | null>(
     null,
   );
+  const [pendingDocumentRemoval, setPendingDocumentRemoval] =
+    useState<DocumentItem | null>(null);
 
   const visibleDocuments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -277,8 +280,14 @@ export function DocumentsPage({
     }
   }
 
-  async function remove(item: DocumentItem) {
-    if (!window.confirm(`Dokument "${item.title}" löschen?`)) return;
+  function remove(item: DocumentItem) {
+    setPendingDocumentRemoval(item);
+  }
+
+  async function confirmRemove() {
+    const item = pendingDocumentRemoval;
+    if (!item) return;
+    setPendingDocumentRemoval(null);
 
     const { error } = await supabase.from("documents").delete().eq("id", item.id);
 
@@ -559,6 +568,16 @@ export function DocumentsPage({
           onClose={() => setPreviewDocument(null)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingDocumentRemoval)}
+        title="Dokument löschen?"
+        description="Das Dokument wird dauerhaft aus der Ablage entfernt."
+        detail={pendingDocumentRemoval?.title}
+        confirmLabel="Dokument löschen"
+        onCancel={() => setPendingDocumentRemoval(null)}
+        onConfirm={confirmRemove}
+      />
     </div>
   );
 }

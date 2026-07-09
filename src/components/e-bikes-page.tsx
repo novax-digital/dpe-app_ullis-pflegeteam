@@ -35,6 +35,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
@@ -55,6 +56,7 @@ import {
   type EBikeAvailabilityWindow,
 } from "@/lib/e-bike-availability";
 import {
+  EBIKE_RESERVATION_MAX_BOOKING_DAYS,
   needsEBikeSafetyConfirmation,
   normalizeEBikeReservationSettings,
   type EBikeReservationSettings,
@@ -128,6 +130,7 @@ const EBIKE_RESERVATION_LEAD_MINUTES = 10;
 const EBIKE_RESERVATION_MIN_DURATION_MINUTES = 15;
 const EBIKE_RESERVATION_TIME_STEP_MINUTES = 5;
 const EBIKE_RESERVATION_DURATION_PRESETS = [30, 60, 90, 120];
+const EBIKE_RESERVATION_DAY_PRESETS = [1, 2, 3, 4, 5, 7];
 
 type ReservationRangeDragMode = "start" | "end" | "range" | "track";
 
@@ -233,6 +236,10 @@ function toDateTimeLocalValue(date: string, minutes: number) {
   return `${date}T${hours}:${mins}`;
 }
 
+function toDateTimeLocalInputValue(date: Date) {
+  return `${toDateInputValue(date)}T${formatMinutes(minutesFromDate(date))}`;
+}
+
 function minutesFromTime(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -262,10 +269,24 @@ function formatMinutes(minutes: number) {
 function formatDuration(minutes: number) {
   if (minutes < 60) return `${minutes} Min.`;
 
+  if (minutes >= 24 * 60 && minutes % (24 * 60) === 0) {
+    const days = minutes / (24 * 60);
+    return days === 1 ? "1 Tag" : `${days} Tage`;
+  }
+
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
 
   return rest > 0 ? `${hours} Std. ${rest} Min.` : `${hours} Std.`;
+}
+
+function formatDayDuration(days: number) {
+  if (days % 7 === 0) {
+    const weeks = days / 7;
+    return weeks === 1 ? "1 Woche" : `${weeks} Wochen`;
+  }
+
+  return days === 1 ? "1 Tag" : `${days} Tage`;
 }
 
 function minutesFromDateTimeLocal(value: string) {
@@ -276,6 +297,13 @@ function localDateKey(date: Date) {
   return toDateInputValue(date);
 }
 
+function localDayBounds(dateValue: string) {
+  const start = new Date(`${dateValue}T00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  return { start, end };
+}
+
 function overlaps(startA: Date, endA: Date, startB: Date, endB: Date) {
   return startA < endB && endA > startB;
 }
@@ -284,12 +312,17 @@ function reservationRangeInMinutes(
   reservation: Reservation,
   startMinute: number,
   endMinute: number,
+  dateValue: string,
 ) {
+  const bounds = localDayBounds(dateValue);
   const start = new Date(reservation.start_time);
   const end = new Date(reservation.end_time);
+
   return {
-    start: Math.max(startMinute, minutesFromDate(start)),
-    end: Math.min(endMinute, minutesFromDate(end)),
+    start: start <= bounds.start
+      ? startMinute
+      : Math.max(startMinute, minutesFromDate(start)),
+    end: end >= bounds.end ? endMinute : Math.min(endMinute, minutesFromDate(end)),
   };
 }
 
@@ -367,6 +400,8 @@ export function EBikeReservationsPage({
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [pendingReservation, setPendingReservation] =
     useState<ReservationInsert | null>(null);
+  const [pendingReservationCancellation, setPendingReservationCancellation] =
+    useState<Reservation | null>(null);
   const [safetyAcknowledged, setSafetyAcknowledged] = useState(false);
   const [range, setRange] = useState(() => {
     const dayAvailability =
@@ -467,12 +502,18 @@ export function EBikeReservationsPage({
   }, [bikes]);
 
   const selectedDayReservations = useMemo(() => {
+    const selectedDayBounds = localDayBounds(selectedDate);
+
     return reservations
       .filter(
         (reservation) =>
           reservation.status === "active" &&
-          (localDateKey(new Date(reservation.start_time)) === selectedDate ||
-            localDateKey(new Date(reservation.end_time)) === selectedDate),
+          overlaps(
+            new Date(reservation.start_time),
+            new Date(reservation.end_time),
+            selectedDayBounds.start,
+            selectedDayBounds.end,
+          ),
       )
       .sort(
         (a, b) =>
@@ -502,9 +543,31 @@ export function EBikeReservationsPage({
   const pendingSafetyConfirmationText =
     pendingReservation?.safety_confirmation_text?.trim() ||
     safetyConfirmationText;
+  const maxBookingDays = Math.min(
+    reservationSettings.max_booking_days,
+    EBIKE_RESERVATION_MAX_BOOKING_DAYS,
+  );
+  const modalStartDate = new Date(range.start);
+  const modalEndDate = new Date(range.end);
+  const modalSameDay =
+    localDateKey(modalStartDate) === localDateKey(modalEndDate);
   const modalStartMinute = minutesFromDateTimeLocal(range.start);
   const modalEndMinute = minutesFromDateTimeLocal(range.end);
-  const modalDurationMinutes = Math.max(0, modalEndMinute - modalStartMinute);
+  const modalDurationMinutes = Math.max(
+    0,
+    Math.round((modalEndDate.getTime() - modalStartDate.getTime()) / 60_000),
+  );
+  const modalMaxEndDate = new Date(modalStartDate);
+  modalMaxEndDate.setDate(modalStartDate.getDate() + maxBookingDays);
+  const modalMaxEndValue = toDateTimeLocalInputValue(modalMaxEndDate);
+  const modalMinStartDate =
+    nowMs > 0
+      ? new Date(nowMs + EBIKE_RESERVATION_LEAD_MINUTES * 60_000)
+      : new Date(`${today}T00:00`);
+  const modalMinStartValue = toDateTimeLocalInputValue(modalMinStartDate);
+  const dayDurationPresets = EBIKE_RESERVATION_DAY_PRESETS.filter(
+    (days) => days <= maxBookingDays,
+  );
   const modalTimelineDuration = Math.max(1, availabilityEnd - availabilityStart);
   const modalSelectionStart = Math.max(
     availabilityStart,
@@ -512,7 +575,7 @@ export function EBikeReservationsPage({
   );
   const modalSelectionEnd = Math.max(
     modalSelectionStart,
-    Math.min(availabilityEnd, modalEndMinute),
+    modalSameDay ? Math.min(availabilityEnd, modalEndMinute) : availabilityEnd,
   );
   const modalSelectionLeft =
     dayAvailability.active
@@ -550,9 +613,24 @@ export function EBikeReservationsPage({
     selectedBikeId && dayAvailability.active
       ? occupiedRangesForBike(selectedBikeId, availabilityStart, availabilityEnd)
       : [];
-  const modalHasConflict = modalBusyRanges.some(
-    (item) => modalStartMinute < item.end && modalEndMinute > item.start,
-  );
+  const modalHasConflict =
+    selectedBikeId && modalEndDate > modalStartDate
+      ? reservations.some((reservation) => {
+          if (
+            reservation.status !== "active" ||
+            reservation.ebike_id !== selectedBikeId
+          ) {
+            return false;
+          }
+
+          return overlaps(
+            modalStartDate,
+            modalEndDate,
+            new Date(reservation.start_time),
+            new Date(reservation.end_time),
+          );
+        })
+      : false;
   const hourTicks: number[] = [];
 
   for (
@@ -688,7 +766,12 @@ export function EBikeReservationsPage({
   ) {
     const busyRanges = reservationsForBike(bikeId)
       .map((reservation) =>
-        reservationRangeInMinutes(reservation, startMinute, endMinute),
+        reservationRangeInMinutes(
+          reservation,
+          startMinute,
+          endMinute,
+          selectedDate,
+        ),
       )
       .filter((item) => item.end > item.start)
       .sort((a, b) => a.start - b.start);
@@ -843,6 +926,74 @@ export function EBikeReservationsPage({
       modalStartMinute,
       modalStartMinute + durationMinutes,
     );
+  }
+
+  function clampReservationEnd(startDate: Date, endDate: Date) {
+    const minEnd = new Date(
+      startDate.getTime() + EBIKE_RESERVATION_MIN_DURATION_MINUTES * 60_000,
+    );
+    const maxEnd = new Date(startDate);
+    maxEnd.setDate(startDate.getDate() + maxBookingDays);
+
+    if (endDate < minEnd) return minEnd;
+    if (endDate > maxEnd) return maxEnd;
+
+    return endDate;
+  }
+
+  function setReservationStartValue(nextStartValue: string) {
+    if (!nextStartValue) return;
+
+    const nextStartDate = new Date(nextStartValue);
+    if (Number.isNaN(nextStartDate.getTime())) return;
+
+    const currentEndDate = new Date(range.end);
+    const nextEndDate = clampReservationEnd(nextStartDate, currentEndDate);
+    const nextSelectedDate = localDateKey(nextStartDate);
+
+    lastTimelineAutoScrollKeyRef.current = null;
+    setSelectedDate(nextSelectedDate < today ? today : nextSelectedDate);
+    setCalendarMonth(dateFromInputValue(nextSelectedDate));
+    setReservationCalendarOpen(false);
+    setRange({
+      start: nextStartValue,
+      end: toDateTimeLocalInputValue(nextEndDate),
+    });
+  }
+
+  function setReservationEndValue(nextEndValue: string) {
+    if (!nextEndValue) return;
+
+    const startDate = new Date(range.start);
+    const nextEndDate = new Date(nextEndValue);
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(nextEndDate.getTime())
+    ) {
+      return;
+    }
+
+    setRange((current) => ({
+      ...current,
+      end: toDateTimeLocalInputValue(
+        clampReservationEnd(startDate, nextEndDate),
+      ),
+    }));
+  }
+
+  function setReservationDayDuration(days: number) {
+    const startDate = new Date(range.start);
+    if (Number.isNaN(startDate.getTime())) return;
+
+    const nextEndDate = new Date(startDate);
+    nextEndDate.setDate(startDate.getDate() + days);
+
+    setRange((current) => ({
+      ...current,
+      end: toDateTimeLocalInputValue(
+        clampReservationEnd(startDate, nextEndDate),
+      ),
+    }));
   }
 
   function minuteFromTrackPointer(clientX: number) {
@@ -1009,33 +1160,42 @@ export function EBikeReservationsPage({
 
     const startDate = new Date(range.start);
     const endDate = new Date(range.end);
-    const reservationDay = availability[startDate.getDay()];
+    const startAvailability = availability[startDate.getDay()];
+    const endAvailability = availability[endDate.getDay()];
     const startMinutes = minutesFromDate(startDate);
     const endMinutes = minutesFromDate(endDate);
+
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(endDate.getTime())
+    ) {
+      setMessage("Bitte Start und Ende vollständig angeben.");
+      return;
+    }
 
     if (endDate <= startDate) {
       setMessage("Endzeit muss nach Startzeit liegen.");
       return;
     }
 
-    if (localDateKey(startDate) !== localDateKey(endDate)) {
-      setMessage("Reservierungen müssen innerhalb eines Tages liegen.");
-      return;
-    }
-
     if (
-      !reservationDay.active ||
-      startMinutes < minutesFromTime(reservationDay.start_time) ||
-      endMinutes > minutesFromTime(reservationDay.end_time)
+      !startAvailability.active ||
+      startMinutes < minutesFromTime(startAvailability.start_time) ||
+      startMinutes > minutesFromTime(startAvailability.end_time) ||
+      !endAvailability.active ||
+      endMinutes < minutesFromTime(endAvailability.start_time) ||
+      endMinutes > minutesFromTime(endAvailability.end_time)
     ) {
-      setMessage("Die Auswahl liegt außerhalb der freigegebenen E-Bike-Zeiten.");
+      setMessage(
+        "Start und Rückgabe müssen innerhalb der freigegebenen E-Bike-Zeiten liegen.",
+      );
       return;
     }
 
     if (
-      selectedDateIsToday &&
       nowMs > 0 &&
-      startMinutes < earliestBookableMinute
+      startDate.getTime() <
+        nowMs + EBIKE_RESERVATION_LEAD_MINUTES * 60_000
     ) {
       setMessage(
         `Reservierungen sind frühestens ${EBIKE_RESERVATION_LEAD_MINUTES} Minuten in der Zukunft möglich.`,
@@ -1043,8 +1203,13 @@ export function EBikeReservationsPage({
       return;
     }
 
-    if (endDate.getTime() - startDate.getTime() > 14 * 24 * 60 * 60 * 1000) {
-      setMessage("Maximale Reservierungsdauer beträgt 14 Tage.");
+    if (
+      endDate.getTime() - startDate.getTime() >
+      maxBookingDays * 24 * 60 * 60 * 1000
+    ) {
+      setMessage(
+        `Maximale Reservierungsdauer beträgt ${formatDayDuration(maxBookingDays)}.`,
+      );
       return;
     }
 
@@ -1101,8 +1266,14 @@ export function EBikeReservationsPage({
     });
   }
 
-  async function cancelReservation(reservation: Reservation) {
-    if (!window.confirm("Reservierung stornieren?")) return;
+  function cancelReservation(reservation: Reservation) {
+    setPendingReservationCancellation(reservation);
+  }
+
+  async function confirmCancelReservation() {
+    const reservation = pendingReservationCancellation;
+    if (!reservation) return;
+    setPendingReservationCancellation(null);
 
     const { error } = await supabase
       .from("ebike_reservations")
@@ -1441,6 +1612,7 @@ export function EBikeReservationsPage({
                         reservation,
                         timelineStart,
                         timelineEnd,
+                        selectedDate,
                       );
                       const canCancel = isAdmin || reservation.user_id === userId;
                       const completedReservation =
@@ -1679,9 +1851,23 @@ export function EBikeReservationsPage({
                         <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
                           Zeitraum
                         </p>
-                        <p className="mt-1 text-2xl font-semibold tabular-nums">
-                          {formatMinutes(modalStartMinute)} -{" "}
-                          {formatMinutes(modalEndMinute)}
+                        <p
+                          className={cn(
+                            "mt-1 font-semibold tabular-nums",
+                            modalSameDay ? "text-2xl" : "text-base sm:text-lg",
+                          )}
+                        >
+                          {modalSameDay ? (
+                            <>
+                              {formatMinutes(modalStartMinute)} -{" "}
+                              {formatMinutes(modalEndMinute)}
+                            </>
+                          ) : (
+                            <>
+                              {formatDateTime(range.start)} bis{" "}
+                              {formatDateTime(range.end)}
+                            </>
+                          )}
                         </p>
                       </div>
                       <Badge tone={modalHasConflict ? "danger" : "success"}>
@@ -1827,88 +2013,55 @@ export function EBikeReservationsPage({
                         15 Min.
                         <ChevronRight className="h-4 w-4" />
                       </Button>
+                      {dayDurationPresets.map((days) => (
+                        <Button
+                          key={days}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReservationDayDuration(days)}
+                          disabled={!modalCanSelectTime}
+                        >
+                          {formatDayDuration(days)}
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 </div>
 
                 <div className="grid min-w-0 gap-4 md:grid-cols-2">
                   <Field>
-                    <Label>Start</Label>
-                    <div className="mt-1 flex h-12 items-center justify-between gap-2 rounded-md border border-border bg-card px-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setReservationMinutes(
-                            modalStartMinute - 15,
-                            modalEndMinute,
-                          )
-                        }
-                        disabled={!modalCanSelectTime}
-                        title="Start früher"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <span className="text-xl font-semibold tabular-nums">
-                        {formatMinutes(modalStartMinute)}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setReservationMinutes(
-                            modalStartMinute + 15,
-                            modalEndMinute,
-                          )
-                        }
-                        disabled={!modalCanSelectTime}
-                        title="Start später"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Label htmlFor="reservation-start">Start</Label>
+                    <Input
+                      id="reservation-start"
+                      type="datetime-local"
+                      value={range.start}
+                      min={modalMinStartValue}
+                      onChange={(event) =>
+                        setReservationStartValue(event.target.value)
+                      }
+                      required
+                    />
                   </Field>
                   <Field>
-                    <Label>Ende</Label>
-                    <div className="mt-1 flex h-12 items-center justify-between gap-2 rounded-md border border-border bg-card px-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setReservationMinutes(
-                            modalStartMinute,
-                            modalEndMinute - 15,
-                          )
-                        }
-                        disabled={!modalCanSelectTime}
-                        title="Ende früher"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <span className="text-xl font-semibold tabular-nums">
-                        {formatMinutes(modalEndMinute)}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setReservationMinutes(
-                            modalStartMinute,
-                            modalEndMinute + 15,
-                          )
-                        }
-                        disabled={!modalCanSelectTime}
-                        title="Ende später"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Label htmlFor="reservation-end">Ende</Label>
+                    <Input
+                      id="reservation-end"
+                      type="datetime-local"
+                      value={range.end}
+                      min={range.start}
+                      max={modalMaxEndValue}
+                      onChange={(event) =>
+                        setReservationEndValue(event.target.value)
+                      }
+                      required
+                    />
                   </Field>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Maximal {formatDayDuration(maxBookingDays)} pro Buchung.
+                  Start und Rückgabe müssen in den freigegebenen Zeiten liegen.
+                </p>
               </div>
 
               <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
@@ -2025,6 +2178,28 @@ export function EBikeReservationsPage({
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingReservationCancellation)}
+        title="Reservierung stornieren?"
+        description="Diese Reservierung wird storniert und der Zeitraum wird wieder freigegeben."
+        detail={
+          pendingReservationCancellation ? (
+            <span className="block">
+              {bikes.find(
+                (bike) => bike.id === pendingReservationCancellation.ebike_id,
+              )?.name ?? "E-Bike"}
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                {formatDateTime(pendingReservationCancellation.start_time)} bis{" "}
+                {formatDateTime(pendingReservationCancellation.end_time)}
+              </span>
+            </span>
+          ) : null
+        }
+        confirmLabel="Reservierung stornieren"
+        onCancel={() => setPendingReservationCancellation(null)}
+        onConfirm={confirmCancelReservation}
+      />
     </div>
   );
 }
@@ -2045,6 +2220,9 @@ export function EBikeFleetPage({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [pendingBikeRemoval, setPendingBikeRemoval] = useState<EBike | null>(
+    null,
+  );
   const imagePreviewUrlRef = useRef<string | null>(null);
 
   const availableBikes = useMemo(() => {
@@ -2126,7 +2304,7 @@ export function EBikeFleetPage({
 
     if (file.size > EBIKE_IMAGE_MAX_BYTES) {
       setSelectedImageFile(null);
-      setMessage("Das Bild darf maximal 5 MB groß sein.");
+      setMessage("Das Bild darf maximal 12 MB groß sein.");
       return false;
     }
 
@@ -2253,8 +2431,14 @@ export function EBikeFleetPage({
     await reload();
   }
 
-  async function deleteBike(bike: EBike) {
-    if (!window.confirm(`E-Bike "${bike.name}" löschen?`)) return;
+  function deleteBike(bike: EBike) {
+    setPendingBikeRemoval(bike);
+  }
+
+  async function confirmDeleteBike() {
+    const bike = pendingBikeRemoval;
+    if (!bike) return;
+    setPendingBikeRemoval(null);
 
     const { error } = await supabase.from("ebikes").delete().eq("id", bike.id);
 
@@ -2387,6 +2571,7 @@ export function EBikeFleetPage({
                         <img
                           src={displayedImageUrl}
                           alt="E-Bike Bild"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -2417,7 +2602,7 @@ export function EBikeFleetPage({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {imageFile
                           ? formatFileSize(imageFile.size)
-                          : "JPG, PNG, WebP oder GIF bis 5 MB"}
+                          : "JPG, PNG, WebP oder GIF bis 12 MB"}
                       </p>
                     </div>
                     <span className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground shadow-sm transition group-hover:bg-white">
@@ -2495,6 +2680,16 @@ export function EBikeFleetPage({
           </div>
         </section>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(pendingBikeRemoval)}
+        title="E-Bike löschen?"
+        description="Dieses E-Bike wird dauerhaft aus dem Fuhrpark entfernt."
+        detail={pendingBikeRemoval?.name}
+        confirmLabel="E-Bike löschen"
+        onCancel={() => setPendingBikeRemoval(null)}
+        onConfirm={confirmDeleteBike}
+      />
     </div>
   );
 }
@@ -2521,6 +2716,8 @@ function FleetBikeCard({
           <img
             src={bike.image_url}
             alt={bike.name}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover"
           />
         </div>

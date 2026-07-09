@@ -28,6 +28,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
@@ -125,6 +126,8 @@ export function CalendarPage({
   );
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingEventRemoval, setPendingEventRemoval] =
+    useState<UnifiedEvent | null>(null);
 
   const monthDate = useMemo(() => new Date(monthCursor), [monthCursor]);
   const selectedDay = useMemo(() => new Date(selectedDate), [selectedDate]);
@@ -277,9 +280,15 @@ export function CalendarPage({
     await reload();
   }
 
-  async function deleteEvent(event: UnifiedEvent) {
+  function deleteEvent(event: UnifiedEvent) {
     if (event.source !== "calendar") return;
-    if (!window.confirm(`Termin "${event.title}" löschen?`)) return;
+    setPendingEventRemoval(event);
+  }
+
+  async function confirmDeleteEvent() {
+    const event = pendingEventRemoval;
+    if (!event || event.source !== "calendar") return;
+    setPendingEventRemoval(null);
 
     const { error } = await supabase
       .from("calendar_events")
@@ -627,6 +636,16 @@ export function CalendarPage({
           </div>
         </Card>
       </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingEventRemoval)}
+        title="Termin löschen?"
+        description="Dieser Kalendereintrag wird dauerhaft entfernt."
+        detail={pendingEventRemoval?.title}
+        confirmLabel="Termin löschen"
+        onCancel={() => setPendingEventRemoval(null)}
+        onConfirm={confirmDeleteEvent}
+      />
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AppRole } from "@/lib/auth";
+import { appUrl } from "@/lib/app-url";
+import { sendInviteEmail } from "@/lib/auth-emails";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -52,7 +54,6 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const email = String(body.email ?? "").trim().toLowerCase();
-  const password = String(body.password ?? "");
   const fullName = String(body.full_name ?? "").trim();
   const position = String(body.position ?? "").trim();
   const role = String(body.role ?? "employee") as AppRole;
@@ -60,13 +61,6 @@ export async function POST(request: Request) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
       { error: "Ungültige E-Mail-Adresse." },
-      { status: 400 },
-    );
-  }
-
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "Passwort muss mindestens 8 Zeichen lang sein." },
       { status: 400 },
     );
   }
@@ -79,36 +73,59 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
   }
 
-  const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: fullName,
-      position: position || null,
-      role,
-    },
-  });
+  const { data: invite, error: inviteError } =
+    await admin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: {
+        redirectTo: appUrl("/einladung"),
+        data: {
+          full_name: fullName,
+          position: position || null,
+          role,
+        },
+      },
+    });
 
-  if (createError || !created.user) {
+  if (inviteError || !invite.user || !invite.properties?.hashed_token) {
     return NextResponse.json(
-      { error: createError?.message ?? "Anlegen fehlgeschlagen." },
+      { error: inviteError?.message ?? "Einladungslink konnte nicht erstellt werden." },
       { status: 400 },
     );
   }
 
   await admin.from("profiles").upsert({
-    id: created.user.id,
+    id: invite.user.id,
     full_name: fullName,
     email,
     position: position || null,
   });
 
-  await admin.from("user_roles").delete().eq("user_id", created.user.id);
+  await admin.from("user_roles").delete().eq("user_id", invite.user.id);
   await admin.from("user_roles").insert({
-    user_id: created.user.id,
+    user_id: invite.user.id,
     role,
   });
 
-  return NextResponse.json({ user_id: created.user.id });
+  try {
+    await sendInviteEmail({
+      email,
+      fullName,
+      role,
+      tokenHash: invite.properties.hashed_token,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? `Konto wurde angelegt, aber die Einladung konnte nicht versendet werden: ${error.message}`
+            : "Konto wurde angelegt, aber die Einladung konnte nicht versendet werden.",
+        user_id: invite.user.id,
+      },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ user_id: invite.user.id });
 }

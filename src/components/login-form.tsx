@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
-import { Loader2, LogIn } from "lucide-react";
+import { KeyRound, Loader2, LogIn } from "lucide-react";
 import { Button, Card, Field, Input, Label, Notice } from "@/components/ui";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -12,13 +12,17 @@ export function LoginForm() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<"login" | "reset">("login");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
+    setSuccess(null);
     setSubmitting(true);
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -35,6 +39,35 @@ export function LoginForm() {
 
     router.replace("/");
     router.refresh();
+  }
+
+  async function requestPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    setSuccess(null);
+    setSubmitting(true);
+
+    const response = await fetch("/api/auth/password-reset", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: resetEmail }),
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
+    setSubmitting(false);
+
+    if (!response.ok) {
+      setMessage(body.error ?? "Die Anfrage konnte nicht verarbeitet werden.");
+      return;
+    }
+
+    setSuccess(
+      "Wenn ein Konto zu dieser E-Mail existiert, wurde ein Link zum Zurücksetzen versendet.",
+    );
   }
 
   return (
@@ -60,7 +93,7 @@ export function LoginForm() {
             Ullis Connect
           </h1>
           <p className="text-base leading-7 opacity-90">
-            News, Gesundheitskurse, E-Bike-Buchungen und Teamverwaltung an
+            Pinnwand, Gesundheitskurse, E-Bike-Buchungen und Teamverwaltung an
             einem zentralen Ort.
           </p>
         </div>
@@ -90,7 +123,9 @@ export function LoginForm() {
           <div>
             <h2 className="text-2xl font-semibold">Anmelden</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Konten werden intern durch die Administration angelegt.
+              {mode === "login"
+                ? "Konten werden intern durch die Administration angelegt."
+                : "Wir senden dir einen Link zum Zurücksetzen deines Passworts."}
             </p>
           </div>
 
@@ -102,45 +137,105 @@ export function LoginForm() {
           ) : null}
 
           <Card className="p-5">
-            <form onSubmit={onSubmit} className="space-y-4">
-              <Field>
-                <Label htmlFor="email">E-Mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </Field>
-              <Field>
-                <Label htmlFor="password">Passwort</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </Field>
+            {mode === "login" ? (
+              <form onSubmit={onSubmit} className="space-y-4">
+                <Field>
+                  <Label htmlFor="email">E-Mail</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <Label htmlFor="password">Passwort</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </Field>
 
-              {message ? <Notice tone="danger">{message}</Notice> : null}
+                {message ? <Notice tone="danger">{message}</Notice> : null}
+                {success ? <Notice tone="success">{success}</Notice> : null}
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={submitting || !hasSupabaseEnv}
-              >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <LogIn className="h-4 w-4" />
-                )}
-                Anmelden
-              </Button>
-            </form>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={submitting || !hasSupabaseEnv}
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="h-4 w-4" />
+                  )}
+                  Anmelden
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setMode("reset");
+                    setMessage(null);
+                    setSuccess(null);
+                    setResetEmail(email);
+                  }}
+                >
+                  Passwort vergessen?
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={requestPasswordReset} className="space-y-4">
+                <Field>
+                  <Label htmlFor="reset-email">E-Mail</Label>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={resetEmail}
+                    onChange={(event) => setResetEmail(event.target.value)}
+                  />
+                </Field>
+
+                {message ? <Notice tone="danger">{message}</Notice> : null}
+                {success ? <Notice tone="success">{success}</Notice> : null}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={submitting || !hasSupabaseEnv}
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+                  Link anfordern
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setMode("login");
+                    setMessage(null);
+                    setSuccess(null);
+                  }}
+                >
+                  Zur Anmeldung
+                </Button>
+              </form>
+            )}
           </Card>
         </div>
       </main>

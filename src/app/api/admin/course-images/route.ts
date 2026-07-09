@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import {
   COURSE_IMAGE_ACCEPTED_TYPES,
   COURSE_IMAGE_BUCKET,
-  COURSE_IMAGE_EXTENSION_BY_TYPE,
   COURSE_IMAGE_MAX_BYTES,
 } from "@/lib/course-images";
+import { optimizeUploadedImage } from "@/lib/image-upload-processing";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -103,20 +103,20 @@ export async function POST(request: Request) {
 
   if (file.size > COURSE_IMAGE_MAX_BYTES) {
     return NextResponse.json(
-      { error: "Das Bild darf maximal 5 MB groß sein." },
+      { error: "Das Bild darf maximal 12 MB groß sein." },
       { status: 400 },
     );
   }
 
   try {
     admin = await ensureCourseImageBucket();
-    const extension = COURSE_IMAGE_EXTENSION_BY_TYPE[file.type] ?? "jpg";
-    const filePath = `courses/${crypto.randomUUID()}.${extension}`;
+    const optimizedImage = await optimizeUploadedImage({ file });
+    const filePath = `courses/${crypto.randomUUID()}.${optimizedImage.extension}`;
     const { error: uploadError } = await admin.storage
       .from(COURSE_IMAGE_BUCKET)
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        contentType: file.type,
+      .upload(filePath, optimizedImage.blob, {
+        cacheControl: "31536000",
+        contentType: optimizedImage.contentType,
       });
 
     if (uploadError) {
@@ -127,7 +127,11 @@ export async function POST(request: Request) {
       data: { publicUrl },
     } = admin.storage.from(COURSE_IMAGE_BUCKET).getPublicUrl(filePath);
 
-    return NextResponse.json({ publicUrl });
+    return NextResponse.json({
+      publicUrl,
+      originalBytes: optimizedImage.originalBytes,
+      optimizedBytes: optimizedImage.optimizedBytes,
+    });
   } catch (error) {
     return NextResponse.json(
       {
