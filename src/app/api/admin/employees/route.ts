@@ -134,6 +134,91 @@ export async function POST(request: Request) {
   return NextResponse.json({ user_id: invite.user.id });
 }
 
+export async function PATCH(request: Request) {
+  if (!hasSupabaseEnv) {
+    return NextResponse.json(
+      { error: "Supabase ist noch nicht konfiguriert." },
+      { status: 503 },
+    );
+  }
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const userId = String(body.user_id ?? "").trim();
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const fullName = String(body.full_name ?? "").trim();
+  const position = String(body.position ?? "").trim();
+
+  if (!userId) {
+    return NextResponse.json({ error: "Benutzer-ID fehlt." }, { status: 400 });
+  }
+  if (!fullName) {
+    return NextResponse.json({ error: "Name ist erforderlich." }, { status: 400 });
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json(
+      { error: "Ungültige E-Mail-Adresse." },
+      { status: 400 },
+    );
+  }
+
+  const { data: existing, error: userError } =
+    await auth.admin.auth.admin.getUserById(userId);
+  if (userError || !existing.user) {
+    return NextResponse.json(
+      { error: userError?.message ?? "Benutzerkonto wurde nicht gefunden." },
+      { status: 404 },
+    );
+  }
+
+  const previousEmail = existing.user.email ?? "";
+  const previousMetadata = existing.user.user_metadata;
+  const { error: authUpdateError } =
+    await auth.admin.auth.admin.updateUserById(userId, {
+      email,
+      email_confirm: true,
+      user_metadata: {
+        ...previousMetadata,
+        full_name: fullName,
+        position: position || null,
+      },
+    });
+
+  if (authUpdateError) {
+    return NextResponse.json(
+      { error: `Konto konnte nicht aktualisiert werden: ${authUpdateError.message}` },
+      { status: 400 },
+    );
+  }
+
+  const { error: profileError } = await auth.admin
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      email,
+      position: position || null,
+    })
+    .eq("id", userId);
+
+  if (profileError) {
+    await auth.admin.auth.admin.updateUserById(userId, {
+      email: previousEmail || undefined,
+      email_confirm: true,
+      user_metadata: previousMetadata,
+    });
+    return NextResponse.json(
+      { error: `Profil konnte nicht aktualisiert werden: ${profileError.message}` },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
+}
+
 export async function DELETE(request: Request) {
   if (!hasSupabaseEnv) {
     return NextResponse.json(

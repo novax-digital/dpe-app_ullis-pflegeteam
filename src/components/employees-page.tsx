@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Badge,
   Button,
@@ -56,6 +56,11 @@ export function EmployeesPage({
   const [role, setRole] = useState<AppRole>("employee");
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editTarget, setEditTarget] = useState<Profile | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPosition, setEditPosition] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const rolesByUser = useMemo(() => {
     const map = new Map<string, AppRole[]>();
@@ -150,6 +155,58 @@ export function EmployeesPage({
     await reload();
   }
 
+  function startEditing(profile: Profile) {
+    setMessage(null);
+    setSuccess(null);
+    setEditTarget(profile);
+    setEditFullName(profile.full_name ?? "");
+    setEditEmail(profile.email ?? "");
+    setEditPosition(profile.position ?? "");
+  }
+
+  function stopEditing() {
+    setEditTarget(null);
+    setEditFullName("");
+    setEditEmail("");
+    setEditPosition("");
+  }
+
+  async function updateEmployee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editTarget || savingEdit) return;
+
+    if (!editFullName.trim() || !editEmail.trim()) {
+      setMessage("Name und E-Mail sind erforderlich.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setMessage(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/employees", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: editTarget.id,
+        full_name: editFullName,
+        email: editEmail,
+        position: editPosition,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    setSavingEdit(false);
+
+    if (!response.ok) {
+      setMessage(body.error ?? "Änderungen konnten nicht gespeichert werden.");
+      return;
+    }
+
+    stopEditing();
+    setSuccess("Mitarbeiterkonto wurde aktualisiert.");
+    await reload();
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -239,6 +296,70 @@ export function EmployeesPage({
         </Card>
       ) : null}
 
+      {editTarget ? (
+        <Card className="p-5">
+          <form onSubmit={updateEmployee} className="space-y-4">
+            <h2 className="font-semibold">Mitarbeiterkonto bearbeiten</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field>
+                <Label htmlFor="edit-employee-name">Name</Label>
+                <Input
+                  id="edit-employee-name"
+                  value={editFullName}
+                  onChange={(event) => setEditFullName(event.target.value)}
+                  required
+                />
+              </Field>
+              <Field>
+                <Label htmlFor="edit-employee-email">E-Mail</Label>
+                <Input
+                  id="edit-employee-email"
+                  type="email"
+                  value={editEmail}
+                  onChange={(event) => setEditEmail(event.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Die neue Adresse wird auch für die Anmeldung verwendet.
+                </p>
+              </Field>
+              <Field>
+                <Label htmlFor="edit-employee-position">Berufsbezeichnung</Label>
+                <Select
+                  id="edit-employee-position"
+                  value={editPosition}
+                  onChange={(event) => setEditPosition(event.target.value)}
+                >
+                  <option value="">Keine Angabe</option>
+                  {editPosition && !positions.includes(editPosition) ? (
+                    <option value={editPosition}>{editPosition}</option>
+                  ) : null}
+                  {positions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={savingEdit}>
+                {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Änderungen speichern
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={savingEdit}
+                onClick={stopEditing}
+              >
+                Abbrechen
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-sm">
@@ -275,21 +396,34 @@ export function EmployeesPage({
                     {formatDate(profile.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      title={
-                        profile.id === currentUserId
-                          ? "Das eigene Konto kann nicht gelöscht werden"
-                          : "Benutzerkonto löschen"
-                      }
-                      aria-label="Benutzerkonto löschen"
-                      disabled={profile.id === currentUserId || deleting}
-                      onClick={() => setDeleteTarget(profile)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title="Mitarbeiterkonto bearbeiten"
+                        aria-label="Mitarbeiterkonto bearbeiten"
+                        disabled={savingEdit || deleting}
+                        onClick={() => startEditing(profile)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title={
+                          profile.id === currentUserId
+                            ? "Das eigene Konto kann nicht gelöscht werden"
+                            : "Benutzerkonto löschen"
+                        }
+                        aria-label="Benutzerkonto löschen"
+                        disabled={profile.id === currentUserId || deleting}
+                        onClick={() => setDeleteTarget(profile)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
