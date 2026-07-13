@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { appUrl, getAppBaseUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import type { Database } from "@/lib/database.types";
 import {
   getResendDefaultFrom,
@@ -24,16 +24,9 @@ export type NewsNotificationResult = {
 const maxRecipientsPerEmail = 50;
 const notificationRoles: AppRole[] = ["admin", "employee", "physiotherapy"];
 
-function appBaseUrl() {
-  return getAppBaseUrl();
-}
-
 function messageUrl(item: NewsItem) {
-  const baseUrl = appBaseUrl();
-  if (!baseUrl) return null;
-
   try {
-    return appUrl(`/nachrichten/${item.id}`);
+    return emailAppUrl(`/nachrichten/${item.id}`);
   } catch {
     return null;
   }
@@ -128,7 +121,7 @@ export function buildNewsNotificationEmail({
   const escapedAuthor = escapeHtml(author);
   const escapedPreview = escapeHtml(preview);
   const escapedUrl = url ? escapeHtml(url) : "";
-  const logoUrl = escapeHtml(appUrl("/ullis-logo.png"));
+  const logoUrl = escapeHtml(emailAppUrl("/ullis-logo.png"));
   const escapedRecipientList = recipientList?.length
     ? escapeHtml(recipientList.join(", "))
     : "";

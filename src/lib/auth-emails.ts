@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AppRole } from "@/lib/auth";
 import { ROLE_LABEL } from "@/lib/auth";
-import { appUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import { getResendDefaultFrom, sendEmail } from "@/lib/resend";
 
 type AuthEmailKind = "invite" | "recovery";
@@ -23,7 +23,7 @@ export function authActionUrl({
   type: AuthEmailKind;
 }) {
   const pathname = type === "invite" ? "/einladung" : "/passwort-zuruecksetzen";
-  const url = new URL(appUrl(pathname));
+  const url = new URL(emailAppUrl(pathname));
   url.searchParams.set("token_hash", tokenHash);
   url.searchParams.set("type", type);
   return url.toString();
@@ -42,7 +42,7 @@ function authEmailTemplate({
   actionUrl: string;
   footer: string;
 }) {
-  const logoUrl = appUrl("/ullis-logo.png");
+  const logoUrl = emailAppUrl("/ullis-logo.png");
   const escapedTitle = escapeHtml(title);
   const escapedIntro = escapeHtml(intro);
   const escapedFooter = escapeHtml(footer);

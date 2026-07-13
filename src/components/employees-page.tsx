@@ -1,11 +1,12 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Label,
@@ -36,9 +37,11 @@ const roleOptions: AppRole[] = ["employee", "admin", "physiotherapy"];
 export function EmployeesPage({
   initialProfiles,
   initialRoles,
+  currentUserId,
 }: {
   initialProfiles: Profile[];
   initialRoles: UserRole[];
+  currentUserId: string;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [profiles, setProfiles] = useState(initialProfiles);
@@ -51,6 +54,8 @@ export function EmployeesPage({
   const [email, setEmail] = useState("");
   const [position, setPosition] = useState(positions[2]);
   const [role, setRole] = useState<AppRole>("employee");
+  const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const rolesByUser = useMemo(() => {
     const map = new Map<string, AppRole[]>();
@@ -116,6 +121,32 @@ export function EmployeesPage({
     setSuccess("Mitarbeiter:in wurde angelegt und per E-Mail eingeladen.");
     resetForm();
     setShowForm(false);
+    await reload();
+  }
+
+  async function deleteEmployee() {
+    if (!deleteTarget || deleting) return;
+
+    setDeleting(true);
+    setMessage(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/employees", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: deleteTarget.id }),
+    });
+    const body = await response.json().catch(() => ({}));
+
+    setDeleting(false);
+
+    if (!response.ok) {
+      setMessage(body.error ?? "Löschen fehlgeschlagen.");
+      return;
+    }
+
+    setDeleteTarget(null);
+    setSuccess("Benutzerkonto wurde dauerhaft gelöscht.");
     await reload();
   }
 
@@ -218,6 +249,7 @@ export function EmployeesPage({
                 <th className="px-4 py-3 font-medium">Berufsbezeichnung</th>
                 <th className="px-4 py-3 font-medium">Rollen</th>
                 <th className="px-4 py-3 font-medium">Seit</th>
+                <th className="px-4 py-3 text-right font-medium">Aktionen</th>
               </tr>
             </thead>
             <tbody>
@@ -242,6 +274,23 @@ export function EmployeesPage({
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatDate(profile.created_at)}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title={
+                        profile.id === currentUserId
+                          ? "Das eigene Konto kann nicht gelöscht werden"
+                          : "Benutzerkonto löschen"
+                      }
+                      aria-label="Benutzerkonto löschen"
+                      disabled={profile.id === currentUserId || deleting}
+                      onClick={() => setDeleteTarget(profile)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -253,6 +302,18 @@ export function EmployeesPage({
           </div>
         ) : null}
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Benutzerkonto löschen?"
+        description="Das Konto und die damit verknüpften Daten werden dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden."
+        detail={deleteTarget?.full_name || deleteTarget?.email || undefined}
+        confirmLabel={deleting ? "Wird gelöscht …" : "Konto löschen"}
+        onCancel={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        onConfirm={deleteEmployee}
+      />
     </div>
   );
 }

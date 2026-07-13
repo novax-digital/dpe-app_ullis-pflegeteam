@@ -25,6 +25,7 @@ export default async function EmployeesRoute() {
     <EmployeesPage
       initialProfiles={profilesResult.data ?? []}
       initialRoles={rolesResult.data ?? []}
+      currentUserId={context.user?.id ?? ""}
     />
   );
 }

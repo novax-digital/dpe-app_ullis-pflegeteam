@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { appUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import type { Database } from "@/lib/database.types";
 import { formatDate, formatTime } from "@/lib/format";
 import { normalizeHealthCourseSettings } from "@/lib/health-course-settings";
@@ -110,7 +110,7 @@ function buildHealthCourseReminderEmail({
   course: HealthCourse;
   recipientCount: number;
 }) {
-  const courseUrl = appUrl("/health-courses/uebersicht");
+  const courseUrl = emailAppUrl("/health-courses/uebersicht");
   const preview = coursePreview(course);
   const timeLabel = courseTimeLabel(course);
   const subject = `Kleine Erinnerung: ${course.title}`;
@@ -120,7 +120,7 @@ function buildHealthCourseReminderEmail({
   const escapedPreview = escapeHtml(preview);
   const escapedTimeLabel = escapeHtml(timeLabel);
   const escapedCourseUrl = escapeHtml(courseUrl);
-  const escapedLogoUrl = escapeHtml(appUrl("/ullis-logo.png"));
+  const escapedLogoUrl = escapeHtml(emailAppUrl("/ullis-logo.png"));
 
   const html = `
     <div style="margin:0;padding:0;background:#f5f7f6;font-family:Arial,sans-serif;color:#24312f;">

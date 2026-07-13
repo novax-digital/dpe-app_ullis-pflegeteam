@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Newspaper,
   Settings,
+  UserRound,
   Users,
 } from "lucide-react";
 import type { AppRole } from "@/lib/auth";
@@ -83,6 +84,12 @@ const navItems = [
     label: "Mitarbeitende",
     icon: Users,
     roles: ["admin"] as AppRole[],
+  },
+  {
+    href: "/profil",
+    label: "Mein Konto",
+    icon: UserRound,
+    roles: ["admin", "employee", "physiotherapy"] as AppRole[],
   },
   {
     href: "/settings",

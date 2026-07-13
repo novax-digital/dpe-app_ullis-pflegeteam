@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { appUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import type { Database } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -99,7 +99,7 @@ function buildCalendarReminderEmail({
   event: CalendarEvent;
   recipientCount: number;
 }) {
-  const calendarUrl = appUrl("/calendar");
+  const calendarUrl = emailAppUrl("/calendar");
   const preview = eventPreview(event);
   const timeLabel = event.all_day
     ? `${formatDateTime(event.start_time).split(",")[0]} · ganztags`
@@ -110,7 +110,7 @@ function buildCalendarReminderEmail({
   const escapedLocation = event.location ? escapeHtml(event.location) : "";
   const escapedPreview = escapeHtml(preview);
   const escapedCalendarUrl = escapeHtml(calendarUrl);
-  const escapedLogoUrl = escapeHtml(appUrl("/ullis-logo.png"));
+  const escapedLogoUrl = escapeHtml(emailAppUrl("/ullis-logo.png"));
 
   const html = `
     <div style="margin:0;padding:0;background:#f5f7f6;font-family:Arial,sans-serif;color:#24312f;">

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { AppRole } from "@/lib/auth";
-import { appUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import { sendInviteEmail } from "@/lib/auth-emails";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -8,34 +8,21 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const allowedRoles: AppRole[] = ["admin", "employee", "physiotherapy"];
 
-export async function POST(request: Request) {
-  if (!hasSupabaseEnv) {
-    return NextResponse.json(
-      { error: "Supabase ist noch nicht konfiguriert." },
-      { status: 503 },
-    );
-  }
-
+async function requireAdmin() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json(
-      { error: "Nicht authentifiziert." },
-      { status: 401 },
-    );
+    return { error: "Nicht authentifiziert.", status: 401 as const };
   }
 
   let admin;
   try {
     admin = createSupabaseAdminClient();
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 },
-    );
+    return { error: (error as Error).message, status: 500 as const };
   }
 
   const { data: adminRole } = await admin
@@ -46,11 +33,28 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (!adminRole) {
+    return {
+      error: "Nur Administrator:innen dürfen Konten verwalten.",
+      status: 403 as const,
+    };
+  }
+
+  return { user, admin };
+}
+
+export async function POST(request: Request) {
+  if (!hasSupabaseEnv) {
     return NextResponse.json(
-      { error: "Nur Administrator:innen duerfen Konten anlegen." },
-      { status: 403 },
+      { error: "Supabase ist noch nicht konfiguriert." },
+      { status: 503 },
     );
   }
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+  const { admin } = auth;
 
   const body = await request.json().catch(() => ({}));
   const email = String(body.email ?? "").trim().toLowerCase();
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
       type: "invite",
       email,
       options: {
-        redirectTo: appUrl("/einladung"),
+        redirectTo: emailAppUrl("/einladung"),
         data: {
           full_name: fullName,
           position: position || null,
@@ -128,4 +132,45 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ user_id: invite.user.id });
+}
+
+export async function DELETE(request: Request) {
+  if (!hasSupabaseEnv) {
+    return NextResponse.json(
+      { error: "Supabase ist noch nicht konfiguriert." },
+      { status: 503 },
+    );
+  }
+
+  const auth = await requireAdmin();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const userId = String(body.user_id ?? "").trim();
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Benutzer-ID fehlt." },
+      { status: 400 },
+    );
+  }
+
+  if (userId === auth.user.id) {
+    return NextResponse.json(
+      { error: "Das eigene Konto kann hier nicht gelöscht werden." },
+      { status: 400 },
+    );
+  }
+
+  const { error } = await auth.admin.auth.admin.deleteUser(userId);
+  if (error) {
+    return NextResponse.json(
+      { error: `Konto konnte nicht gelöscht werden: ${error.message}` },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

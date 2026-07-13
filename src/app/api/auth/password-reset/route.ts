@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appUrl } from "@/lib/app-url";
+import { emailAppUrl } from "@/lib/app-url";
 import { sendPasswordResetEmail } from "@/lib/auth-emails";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     type: "recovery",
     email,
     options: {
-      redirectTo: appUrl("/passwort-zuruecksetzen"),
+      redirectTo: emailAppUrl("/passwort-zuruecksetzen"),
     },
   });
 

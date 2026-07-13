@@ -1,5 +1,7 @@
 import "server-only";
 
+export const EMAIL_APP_BASE_URL = "https://connect.ullis-pflegeteam.de";
+
 export function getAppBaseUrl() {
   const explicitUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
@@ -15,4 +17,9 @@ export function getAppBaseUrl() {
 
 export function appUrl(path: string) {
   return new URL(path, getAppBaseUrl()).toString();
+}
+
+/** Public URLs embedded in emails must never point to a Vercel preview. */
+export function emailAppUrl(path: string) {
+  return new URL(path, EMAIL_APP_BASE_URL).toString();
 }
