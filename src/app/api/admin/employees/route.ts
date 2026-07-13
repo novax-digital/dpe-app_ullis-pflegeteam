@@ -152,6 +152,7 @@ export async function PATCH(request: Request) {
   const email = String(body.email ?? "").trim().toLowerCase();
   const fullName = String(body.full_name ?? "").trim();
   const position = String(body.position ?? "").trim();
+  const role = String(body.role ?? "") as AppRole;
 
   if (!userId) {
     return NextResponse.json({ error: "Benutzer-ID fehlt." }, { status: 400 });
@@ -162,6 +163,16 @@ export async function PATCH(request: Request) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
       { error: "Ungültige E-Mail-Adresse." },
+      { status: 400 },
+    );
+  }
+  if (!allowedRoles.includes(role)) {
+    return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
+  }
+
+  if (userId === auth.user.id && role !== "admin") {
+    return NextResponse.json(
+      { error: "Die eigene Admin-Rolle kann hier nicht geändert werden." },
       { status: 400 },
     );
   }
@@ -212,6 +223,33 @@ export async function PATCH(request: Request) {
     });
     return NextResponse.json(
       { error: `Profil konnte nicht aktualisiert werden: ${profileError.message}` },
+      { status: 400 },
+    );
+  }
+
+  const { error: roleInsertError } = await auth.admin
+    .from("user_roles")
+    .upsert(
+      { user_id: userId, role },
+      { onConflict: "user_id,role", ignoreDuplicates: true },
+    );
+
+  if (roleInsertError) {
+    return NextResponse.json(
+      { error: `Rolle konnte nicht aktualisiert werden: ${roleInsertError.message}` },
+      { status: 400 },
+    );
+  }
+
+  const { error: oldRolesError } = await auth.admin
+    .from("user_roles")
+    .delete()
+    .eq("user_id", userId)
+    .neq("role", role);
+
+  if (oldRolesError) {
+    return NextResponse.json(
+      { error: `Alte Rolle konnte nicht entfernt werden: ${oldRolesError.message}` },
       { status: 400 },
     );
   }

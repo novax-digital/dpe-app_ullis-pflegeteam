@@ -14,7 +14,7 @@ import {
   PageHeader,
   Select,
 } from "@/components/ui";
-import { ROLE_LABEL, type AppRole } from "@/lib/auth";
+import { primaryRoleFrom, ROLE_LABEL, type AppRole } from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { formatDate } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -60,6 +60,7 @@ export function EmployeesPage({
   const [editFullName, setEditFullName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPosition, setEditPosition] = useState("");
+  const [editRole, setEditRole] = useState<AppRole>("employee");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const rolesByUser = useMemo(() => {
@@ -162,6 +163,11 @@ export function EmployeesPage({
     setEditFullName(profile.full_name ?? "");
     setEditEmail(profile.email ?? "");
     setEditPosition(profile.position ?? "");
+    setEditRole(
+      profile.id === currentUserId
+        ? "admin"
+        : (primaryRoleFrom(rolesByUser.get(profile.id) ?? []) ?? "employee"),
+    );
   }
 
   function stopEditing() {
@@ -169,6 +175,7 @@ export function EmployeesPage({
     setEditFullName("");
     setEditEmail("");
     setEditPosition("");
+    setEditRole("employee");
   }
 
   async function updateEmployee(event: FormEvent<HTMLFormElement>) {
@@ -192,6 +199,7 @@ export function EmployeesPage({
         full_name: editFullName,
         email: editEmail,
         position: editPosition,
+        role: editRole,
       }),
     });
     const body = await response.json().catch(() => ({}));
@@ -340,6 +348,28 @@ export function EmployeesPage({
                     </option>
                   ))}
                 </Select>
+              </Field>
+              <Field>
+                <Label htmlFor="edit-employee-role">Rolle</Label>
+                <Select
+                  id="edit-employee-role"
+                  value={editRole}
+                  disabled={editTarget.id === currentUserId}
+                  onChange={(event) =>
+                    setEditRole(event.target.value as AppRole)
+                  }
+                >
+                  {roleOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {ROLE_LABEL[item]}
+                    </option>
+                  ))}
+                </Select>
+                {editTarget.id === currentUserId ? (
+                  <p className="text-xs text-muted-foreground">
+                    Die eigene Admin-Rolle kann hier nicht geändert werden.
+                  </p>
+                ) : null}
               </Field>
             </div>
             <div className="flex flex-wrap gap-2">
