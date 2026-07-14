@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { emailAppUrl } from "@/lib/app-url";
-import { verifyAuthActionToken } from "@/lib/auth-emails";
+import { verifyAuthActionToken } from "@/lib/auth-action-token";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
