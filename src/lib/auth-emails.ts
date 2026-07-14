@@ -1,11 +1,76 @@
 import "server-only";
 
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { AppRole } from "@/lib/auth";
 import { ROLE_LABEL } from "@/lib/auth";
 import { emailAppUrl } from "@/lib/app-url";
 import { getResendDefaultFrom, sendEmail } from "@/lib/resend";
 
 type AuthEmailKind = "invite" | "recovery";
+
+const AUTH_ACTION_VALIDITY_MS = 72 * 60 * 60 * 1000;
+
+type AuthActionPayload = {
+  email: string;
+  expiresAt: number;
+  nonce: string;
+  type: AuthEmailKind;
+};
+
+function authActionSecret() {
+  const secret =
+    process.env.AUTH_ACTION_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) throw new Error("AUTH_ACTION_SECRET ist nicht konfiguriert.");
+  return secret;
+}
+
+function sign(payload: string) {
+  return createHmac("sha256", authActionSecret()).update(payload).digest("base64url");
+}
+
+export function createAuthActionToken(email: string, type: AuthEmailKind) {
+  const payload: AuthActionPayload = {
+    email: email.trim().toLowerCase(),
+    expiresAt: Date.now() + AUTH_ACTION_VALIDITY_MS,
+    nonce: randomBytes(16).toString("base64url"),
+    type,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${encoded}.${sign(encoded)}`;
+}
+
+export function verifyAuthActionToken(
+  token: string,
+  expectedType: AuthEmailKind,
+) {
+  const [encoded, providedSignature, ...rest] = token.split(".");
+  if (!encoded || !providedSignature || rest.length) return null;
+
+  const expectedSignature = sign(encoded);
+  const provided = Buffer.from(providedSignature);
+  const expected = Buffer.from(expectedSignature);
+  if (
+    provided.length !== expected.length ||
+    !timingSafeEqual(provided, expected)
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encoded, "base64url").toString("utf8"),
+    ) as AuthActionPayload;
+    if (
+      payload.type !== expectedType ||
+      !payload.email ||
+      !Number.isFinite(payload.expiresAt) ||
+      payload.expiresAt < Date.now()
+    ) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 function escapeHtml(value: string) {
   return value
@@ -16,15 +81,15 @@ function escapeHtml(value: string) {
 }
 
 export function authActionUrl({
-  tokenHash,
+  actionToken,
   type,
 }: {
-  tokenHash: string;
+  actionToken: string;
   type: AuthEmailKind;
 }) {
   const pathname = type === "invite" ? "/einladung" : "/passwort-zuruecksetzen";
   const url = new URL(emailAppUrl(pathname));
-  url.searchParams.set("token_hash", tokenHash);
+  url.searchParams.set("action_token", actionToken);
   url.searchParams.set("type", type);
   return url.toString();
 }
@@ -98,14 +163,15 @@ export async function sendInviteEmail({
   email,
   fullName,
   role,
-  tokenHash,
 }: {
   email: string;
   fullName: string;
   role: AppRole;
-  tokenHash: string;
 }) {
-  const actionUrl = authActionUrl({ tokenHash, type: "invite" });
+  const actionUrl = authActionUrl({
+    actionToken: createAuthActionToken(email, "invite"),
+    type: "invite",
+  });
   const recipientName = fullName.trim() || email;
   const template = authEmailTemplate({
     title: "Willkommen bei Ullis Connect",
@@ -113,7 +179,7 @@ export async function sendInviteEmail({
     buttonLabel: "Passwort einrichten",
     actionUrl,
     footer:
-      "Dieser Einladungslink ist nur für dich bestimmt. Wenn du diese Einladung nicht erwartet hast, ignoriere diese E-Mail bitte.",
+      "Dieser Einladungslink ist 72 Stunden gültig und nur für dich bestimmt. Wenn du diese Einladung nicht erwartet hast, ignoriere diese E-Mail bitte.",
   });
 
   const response = await sendEmail({
@@ -132,12 +198,13 @@ export async function sendInviteEmail({
 
 export async function sendPasswordResetEmail({
   email,
-  tokenHash,
 }: {
   email: string;
-  tokenHash: string;
 }) {
-  const actionUrl = authActionUrl({ tokenHash, type: "recovery" });
+  const actionUrl = authActionUrl({
+    actionToken: createAuthActionToken(email, "recovery"),
+    type: "recovery",
+  });
   const template = authEmailTemplate({
     title: "Passwort zurücksetzen",
     intro:
@@ -145,7 +212,7 @@ export async function sendPasswordResetEmail({
     buttonLabel: "Passwort zurücksetzen",
     actionUrl,
     footer:
-      "Wenn du keine Passwort-Zurücksetzung angefordert hast, kannst du diese E-Mail ignorieren.",
+      "Dieser Link ist 72 Stunden gültig. Wenn du keine Passwort-Zurücksetzung angefordert hast, kannst du diese E-Mail ignorieren.",
   });
 
   const response = await sendEmail({

@@ -116,7 +116,6 @@ export async function POST(request: Request) {
       email,
       fullName,
       role,
-      tokenHash: invite.properties.hashed_token,
     });
   } catch (error) {
     return NextResponse.json(

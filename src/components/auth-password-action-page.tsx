@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, KeyRound, Loader2 } from "lucide-react";
+import { FormEvent, useMemo, useRef, useState } from "react";
+import { CheckCircle2, KeyRound, Loader2, Mail } from "lucide-react";
 import { Button, Card, Field, Input, Label, Notice } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -16,6 +17,7 @@ const copyByType = {
     description:
       "Deine Einladung wurde geprüft. Vergib jetzt dein Passwort für Ullis Connect.",
     verifying: "Einladung wird geprüft...",
+    open: "Einladung öffnen",
     button: "Passwort speichern",
     success: "Dein Passwort wurde gespeichert. Du wirst weitergeleitet.",
     invalid:
@@ -26,6 +28,7 @@ const copyByType = {
     description:
       "Dein Reset-Link wurde geprüft. Vergib jetzt ein neues Passwort.",
     verifying: "Reset-Link wird geprüft...",
+    open: "Reset-Link öffnen",
     button: "Neues Passwort speichern",
     success: "Dein Passwort wurde geändert. Du wirst weitergeleitet.",
     invalid:
@@ -42,7 +45,7 @@ export function AuthPasswordActionPage({
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [verified, setVerified] = useState(false);
-  const [verifying, setVerifying] = useState(true);
+  const [verifying, setVerifying] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -51,45 +54,57 @@ export function AuthPasswordActionPage({
   const verifyStartedRef = useRef(false);
   const copy = copyByType[type];
 
-  useEffect(() => {
+  async function verifyLink() {
     if (verifyStartedRef.current) return;
     verifyStartedRef.current = true;
+    setVerifying(true);
+    setMessage(null);
 
-    async function verifyLink() {
-      setMessage(null);
-
-      if (!hasSupabaseEnv) {
-        setMessage("Supabase ist noch nicht konfiguriert.");
-        setVerifying(false);
-        return;
-      }
-
-      const tokenHash = searchParams.get("token_hash");
-      const linkType = searchParams.get("type");
-
-      if (!tokenHash || (linkType && linkType !== type)) {
-        setMessage(copy.invalid);
-        setVerifying(false);
-        return;
-      }
-
-      const { error } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type,
-      });
-
-      if (error) {
-        setMessage(copy.invalid);
-        setVerifying(false);
-        return;
-      }
-
-      setVerified(true);
+    if (!hasSupabaseEnv) {
+      setMessage("Supabase ist noch nicht konfiguriert.");
       setVerifying(false);
+      verifyStartedRef.current = false;
+      return;
     }
 
-    verifyLink();
-  }, [copy.invalid, searchParams, supabase, type]);
+    const actionToken = searchParams.get("action_token");
+    const linkType = searchParams.get("type");
+
+    if (!actionToken || (linkType && linkType !== type)) {
+      setMessage(copy.invalid);
+      setVerifying(false);
+      verifyStartedRef.current = false;
+      return;
+    }
+
+    const response = await fetch("/api/auth/action-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: actionToken, type }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.token_hash) {
+      setMessage(body.error ?? copy.invalid);
+      setVerifying(false);
+      verifyStartedRef.current = false;
+      return;
+    }
+
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: body.token_hash,
+      type,
+    });
+
+    if (error) {
+      setMessage(copy.invalid);
+      setVerifying(false);
+      verifyStartedRef.current = false;
+      return;
+    }
+
+    setVerified(true);
+    setVerifying(false);
+  }
 
   async function savePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -143,7 +158,9 @@ export function AuthPasswordActionPage({
         <div>
           <h1 className="text-2xl font-semibold">{copy.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {verified ? copy.description : copy.verifying}
+            {verified
+              ? copy.description
+              : "Öffne den sicheren Link, um dein Passwort festzulegen."}
           </p>
         </div>
 
@@ -155,7 +172,31 @@ export function AuthPasswordActionPage({
             </div>
           ) : null}
 
-          {!verifying && message ? <Notice tone="danger">{message}</Notice> : null}
+          {!verifying && message ? (
+            <Notice tone="danger">{message}</Notice>
+          ) : null}
+
+          {!verifying && !verified ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Der Link wird erst mit einem Klick bestätigt. So kann er nicht
+                durch automatische Prüfungen deines Mailprogramms verbraucht
+                werden.
+              </p>
+              <Button type="button" onClick={verifyLink}>
+                <Mail className="h-4 w-4" />
+                {copy.open}
+              </Button>
+              {type === "recovery" ? (
+                <Link
+                  className="block text-sm font-medium text-primary underline"
+                  href="/"
+                >
+                  Neuen Link anfordern
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
 
           {!verifying && verified ? (
             <form onSubmit={savePassword} className="space-y-4">

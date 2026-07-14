@@ -55,7 +55,6 @@ export async function POST(request: Request) {
   try {
     await sendPasswordResetEmail({
       email,
-      tokenHash: data.properties.hashed_token,
     });
   } catch (error) {
     console.error("Password reset email failed", error);
