@@ -15,13 +15,19 @@ export default async function HealthCoursesManagementRoute() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [coursesResult, registrationsResult, profilesResult, settingsResult] =
-    await Promise.all([
+  const [
+    coursesResult,
+    registrationsResult,
+    registrationCountsResult,
+    profilesResult,
+    settingsResult,
+  ] = await Promise.all([
       supabase
         .from("health_courses")
         .select("*")
         .order("start_time", { ascending: true }),
       supabase.from("course_registrations").select("*"),
+      supabase.rpc("get_health_course_registration_counts"),
       supabase.from("profiles").select("id, full_name, email"),
       supabase
         .from("health_course_settings")
@@ -35,6 +41,7 @@ export default async function HealthCoursesManagementRoute() {
       mode="manage"
       initialCourses={coursesResult.data ?? []}
       initialRegistrations={registrationsResult.data ?? []}
+      initialRegistrationCounts={registrationCountsResult.data ?? []}
       initialProfiles={profilesResult.data ?? []}
       initialCourseSettings={normalizeHealthCourseSettings(
         settingsResult.data,

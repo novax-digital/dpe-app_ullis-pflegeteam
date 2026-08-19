@@ -54,6 +54,7 @@ import type { Database } from "@/lib/database.types";
 import { formatDate, formatTime, toDatetimeLocal } from "@/lib/format";
 import {
   normalizeHealthCourseSettings,
+  normalizeHealthCourseOptionList,
   type HealthCourseSettings,
 } from "@/lib/health-course-settings";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -61,6 +62,8 @@ import { cn } from "@/lib/utils";
 
 type Course = Database["public"]["Tables"]["health_courses"]["Row"];
 type Registration = Database["public"]["Tables"]["course_registrations"]["Row"];
+type CourseRegistrationCount =
+  Database["public"]["Functions"]["get_health_course_registration_counts"]["Returns"][number];
 type Profile = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
   "id" | "full_name" | "email"
@@ -339,6 +342,7 @@ export function HealthCoursesPage({
   mode,
   initialCourses,
   initialRegistrations,
+  initialRegistrationCounts,
   initialProfiles,
   initialCourseSettings,
   userId,
@@ -347,6 +351,7 @@ export function HealthCoursesPage({
   mode: HealthCoursesMode;
   initialCourses: Course[];
   initialRegistrations: Registration[];
+  initialRegistrationCounts: CourseRegistrationCount[];
   initialProfiles: Profile[];
   initialCourseSettings: HealthCourseSettings;
   userId: string;
@@ -355,10 +360,15 @@ export function HealthCoursesPage({
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [courses, setCourses] = useState(initialCourses);
   const [registrations, setRegistrations] = useState(initialRegistrations);
+  const [registrationCounts, setRegistrationCounts] = useState(
+    initialRegistrationCounts,
+  );
   const [profiles, setProfiles] = useState(initialProfiles);
   const [courseSettings, setCourseSettings] = useState(() =>
     normalizeHealthCourseSettings(initialCourseSettings),
   );
+  const [newCourseCategory, setNewCourseCategory] = useState("");
+  const [courseCategoryLoading, setCourseCategoryLoading] = useState(false);
   const [form, setForm] = useState<CourseForm>(emptyCourseForm());
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -432,6 +442,17 @@ export function HealthCoursesPage({
     return map;
   }, [registrations]);
 
+  const registrationCountByCourse = useMemo(
+    () =>
+      new Map(
+        registrationCounts.map((item) => [
+          item.course_id,
+          item.registration_count,
+        ]),
+      ),
+    [registrationCounts],
+  );
+
   const courseById = useMemo(() => {
     const map = new Map<string, Course>();
     courses.forEach((course) => {
@@ -461,13 +482,19 @@ export function HealthCoursesPage({
       courseSettings.max_active_registrations_per_user;
 
   const reload = useCallback(async () => {
-    const [courseResult, registrationResult, profileResult, settingsResult] =
-      await Promise.all([
+    const [
+      courseResult,
+      registrationResult,
+      registrationCountResult,
+      profileResult,
+      settingsResult,
+    ] = await Promise.all([
         supabase
           .from("health_courses")
           .select("*")
           .order("start_time", { ascending: true }),
         supabase.from("course_registrations").select("*"),
+        supabase.rpc("get_health_course_registration_counts"),
         supabase.from("profiles").select("id, full_name, email"),
         supabase
           .from("health_course_settings")
@@ -478,6 +505,9 @@ export function HealthCoursesPage({
 
     setCourses((courseResult.data ?? []) as Course[]);
     setRegistrations((registrationResult.data ?? []) as Registration[]);
+    setRegistrationCounts(
+      (registrationCountResult.data ?? []) as CourseRegistrationCount[],
+    );
     setProfiles((profileResult.data ?? []) as Profile[]);
     setCourseSettings(normalizeHealthCourseSettings(settingsResult.data));
   }, [supabase]);
@@ -597,6 +627,18 @@ export function HealthCoursesPage({
       });
   }, [isManagementMode, nowMs, visibleCourses]);
 
+  function participantCountForCourse(courseId: string) {
+    return (
+      registrationCountByCourse.get(courseId) ??
+      registeredByCourse.get(courseId)?.length ??
+      0
+    );
+  }
+
+  function canViewInternalNotes(course: Course) {
+    return isAdmin || (isPhysio && course.provider_id === userId);
+  }
+
   function myRegistration(courseId: string) {
     return registrations.find(
       (registration) =>
@@ -708,6 +750,7 @@ export function HealthCoursesPage({
   function closeCourseForm() {
     setShowForm(false);
     setSelectedImageFile(null);
+    setNewCourseCategory("");
   }
 
   function openCreate() {
@@ -717,6 +760,7 @@ export function HealthCoursesPage({
     setManualDates([]);
     setRecurrenceInterval("weekly");
     setRecurrenceCount(10);
+    setNewCourseCategory("");
     setShowForm(true);
     setMessage(null);
   }
@@ -726,8 +770,60 @@ export function HealthCoursesPage({
     setSelectedImageFile(null);
     setScheduleMode("single");
     setManualDates([]);
+    setNewCourseCategory("");
     setShowForm(true);
     setMessage(null);
+  }
+
+  async function addCourseCategory() {
+    const requestedCategory = newCourseCategory.trim().slice(0, 80);
+
+    if (!requestedCategory) {
+      setMessage("Bitte einen Namen für die Kategorie eingeben.");
+      return;
+    }
+
+    const existingCategory = courseSettings.categories.find(
+      (item) =>
+        item.toLocaleLowerCase("de") ===
+        requestedCategory.toLocaleLowerCase("de"),
+    );
+
+    if (existingCategory) {
+      setForm((current) => ({ ...current, category: existingCategory }));
+      setNewCourseCategory("");
+      setMessage(null);
+      return;
+    }
+
+    const nextCategories = normalizeHealthCourseOptionList([
+      ...courseSettings.categories,
+      requestedCategory,
+    ]);
+    setCourseCategoryLoading(true);
+    setMessage(null);
+
+    const { error } = await supabase.from("health_course_settings").upsert(
+      {
+        id: "default",
+        categories: nextCategories,
+      },
+      { onConflict: "id" },
+    );
+
+    setCourseCategoryLoading(false);
+
+    if (error) {
+      setMessage(`Kategorie konnte nicht angelegt werden: ${error.message}`);
+      return;
+    }
+
+    setCourseSettings((current) => ({
+      ...current,
+      categories: nextCategories,
+    }));
+    setForm((current) => ({ ...current, category: requestedCategory }));
+    setNewCourseCategory("");
   }
 
   function addManualDate() {
@@ -1166,6 +1262,35 @@ export function HealthCoursesPage({
                     </option>
                   ))}
                 </Select>
+                {isAdmin ? (
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={newCourseCategory}
+                      onChange={(event) =>
+                        setNewCourseCategory(event.target.value)
+                      }
+                      placeholder="Neue Kategorie"
+                      maxLength={80}
+                      aria-label="Neue Kurs-Kategorie"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addCourseCategory}
+                      disabled={
+                        courseCategoryLoading || !newCourseCategory.trim()
+                      }
+                      className="w-full sm:w-auto"
+                    >
+                      {courseCategoryLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      Hinzufügen
+                    </Button>
+                  </div>
+                ) : null}
               </Field>
               <Field>
                 <Label htmlFor="course-start">Start</Label>
@@ -1533,8 +1658,7 @@ export function HealthCoursesPage({
                   (course) => new Date(course.end_time).getTime() >= nowMs,
                 ) ?? representative;
               const totalParticipants = group.courses.reduce(
-                (sum, course) =>
-                  sum + (registeredByCourse.get(course.id)?.length ?? 0),
+                (sum, course) => sum + participantCountForCourse(course.id),
                 0,
               );
               const totalCapacity = group.courses.reduce(
@@ -1590,6 +1714,18 @@ export function HealthCoursesPage({
                         </p>
                       ) : null}
 
+                      {canViewInternalNotes(representative) &&
+                      representative.notes ? (
+                        <div className="rounded-md border border-border bg-muted/45 px-3 py-2 text-sm">
+                          <p className="text-xs font-semibold text-foreground">
+                            Interne Notiz
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                            {representative.notes}
+                          </p>
+                        </div>
+                      ) : null}
+
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1.5">
                           <CalendarDays className="h-3.5 w-3.5 shrink-0" />
@@ -1621,9 +1757,12 @@ export function HealthCoursesPage({
                       {group.courses.map((course) => {
                         const participants =
                           registeredByCourse.get(course.id) ?? [];
+                        const participantCount = participantCountForCourse(
+                          course.id,
+                        );
                         const free = Math.max(
                           0,
-                          course.max_participants - participants.length,
+                          course.max_participants - participantCount,
                         );
                         const isPast =
                           new Date(course.end_time).getTime() < nowMs;
@@ -1672,10 +1811,22 @@ export function HealthCoursesPage({
                                     "Team"}
                                 </span>
                               </div>
+                              {canViewInternalNotes(course) &&
+                              course.notes &&
+                              course.notes !== representative.notes ? (
+                                <div className="rounded-md border border-border bg-muted/45 px-3 py-2 text-sm">
+                                  <p className="text-xs font-semibold text-foreground">
+                                    Interne Notiz
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                                    {course.notes}
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
 
                             <CourseParticipationBar
-                              current={participants.length}
+                              current={participantCount}
                               max={course.max_participants}
                               compact
                             />
@@ -1767,7 +1918,8 @@ export function HealthCoursesPage({
 
         {!isManagementMode ? visibleCourses.map((course) => {
           const participants = registeredByCourse.get(course.id) ?? [];
-          const free = Math.max(0, course.max_participants - participants.length);
+          const participantCount = participantCountForCourse(course.id);
+          const free = Math.max(0, course.max_participants - participantCount);
           const mine = myRegistration(course.id);
           const isPast = new Date(course.end_time).getTime() < nowMs;
           const effectiveStatus: CourseStatus =
@@ -1834,6 +1986,14 @@ export function HealthCoursesPage({
                         </span>
                       ) : null}
                     </div>
+                    {canViewInternalNotes(course) && course.notes ? (
+                      <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">
+                          Interne Notiz:
+                        </span>{" "}
+                        {course.notes}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="min-w-0 space-y-2">
@@ -1855,14 +2015,14 @@ export function HealthCoursesPage({
                       ) : null}
                       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                         <Users className="h-3.5 w-3.5 shrink-0" />
-                        {participants.length}/{course.max_participants} · {free} frei
+                        {participantCount}/{course.max_participants} · {free} frei
                       </span>
                       <span className="truncate">
                         Anbieter: {profileById.get(course.provider_id) ?? "Team"}
                       </span>
                     </div>
                     <CourseParticipationBar
-                      current={participants.length}
+                      current={participantCount}
                       max={course.max_participants}
                       compact
                     />
@@ -1968,6 +2128,17 @@ export function HealthCoursesPage({
                   </p>
                 ) : null}
 
+                {canViewInternalNotes(course) && course.notes ? (
+                  <div className="rounded-md border border-border bg-muted/45 px-3 py-2 text-sm">
+                    <p className="text-xs font-semibold text-foreground">
+                      Interne Notiz
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                      {course.notes}
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="space-y-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <CalendarDays className="h-4 w-4 shrink-0" />
@@ -1989,7 +2160,7 @@ export function HealthCoursesPage({
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 shrink-0" />
                     <span>
-                      {participants.length} / {course.max_participants} · {free} frei
+                      {participantCount} / {course.max_participants} · {free} frei
                     </span>
                   </div>
                   <p className="text-xs">
@@ -1998,7 +2169,7 @@ export function HealthCoursesPage({
                 </div>
 
                 <CourseParticipationBar
-                  current={participants.length}
+                  current={participantCount}
                   max={course.max_participants}
                 />
 

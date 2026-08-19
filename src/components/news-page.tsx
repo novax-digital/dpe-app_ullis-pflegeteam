@@ -54,7 +54,10 @@ import {
   NEWS_IMAGE_ACCEPTED_TYPES,
   NEWS_IMAGE_MAX_BYTES,
 } from "@/lib/news-images";
-import { normalizeNewsSettings } from "@/lib/news-settings";
+import {
+  normalizeNewsCategoryList,
+  normalizeNewsSettings,
+} from "@/lib/news-settings";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +114,8 @@ function primaryImageUrl(item: NewsItem) {
 }
 
 function publishedLabel(item: NewsItem) {
-  return formatDateTime(item.published_at ?? item.created_at);
+  const label = item.published_at ? "Veröffentlicht" : "Erstellt";
+  return `${label} am ${formatDateTime(item.published_at ?? item.created_at)}`;
 }
 
 export function NewsPage({
@@ -131,6 +135,8 @@ export function NewsPage({
   const [items, setItems] = useState(initialItems);
   const [profiles, setProfiles] = useState(initialProfiles);
   const [categories, setCategories] = useState(initialCategories);
+  const [newCategory, setNewCategory] = useState("");
+  const [categoryLoading, setCategoryLoading] = useState(false);
   const [editing, setEditing] = useState<NewsItem | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -170,9 +176,11 @@ export function NewsPage({
 
   async function reload() {
     const [newsResult, settingsResult] = await Promise.all([
-      supabase.from("news").select("*").order("created_at", {
-        ascending: false,
-      }),
+      supabase
+        .from("news")
+        .select("*")
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false }),
       supabase
         .from("news_settings")
         .select("*")
@@ -210,6 +218,7 @@ export function NewsPage({
     setShowForm(false);
     setEditing(null);
     setSendNotification(false);
+    setNewCategory("");
   }
 
   function showNotice(text: string, tone: NoticeTone = "danger") {
@@ -246,6 +255,7 @@ export function NewsPage({
     setExcerpt("");
     setContent("");
     setSendNotification(false);
+    setNewCategory("");
     setImageEntries([]);
     setShowForm(true);
     setMessage(null);
@@ -260,6 +270,7 @@ export function NewsPage({
     setExcerpt(item.excerpt ?? "");
     setContent(item.content);
     setSendNotification(false);
+    setNewCategory("");
     setImageEntries(
       (item.image_urls ?? []).map((url, index) => ({
         id: `existing-${index}-${url}`,
@@ -272,6 +283,55 @@ export function NewsPage({
     setShowForm(true);
     setMessage(null);
     setMessageTone("danger");
+  }
+
+  async function addCategory() {
+    const requestedCategory = newCategory.trim().slice(0, 80);
+
+    if (!requestedCategory) {
+      showNotice("Bitte einen Namen für die Kategorie eingeben.");
+      return;
+    }
+
+    const existingCategory = categories.find(
+      (item) =>
+        item.toLocaleLowerCase("de") ===
+        requestedCategory.toLocaleLowerCase("de"),
+    );
+
+    if (existingCategory) {
+      setCategory(existingCategory);
+      setNewCategory("");
+      setMessage(null);
+      return;
+    }
+
+    const nextCategories = normalizeNewsCategoryList([
+      ...categories,
+      requestedCategory,
+    ]);
+    setCategoryLoading(true);
+    setMessage(null);
+
+    const { error } = await supabase.from("news_settings").upsert(
+      {
+        id: "default",
+        categories: nextCategories,
+      },
+      { onConflict: "id" },
+    );
+
+    setCategoryLoading(false);
+
+    if (error) {
+      showNotice(`Kategorie konnte nicht angelegt werden: ${error.message}`);
+      return;
+    }
+
+    setCategories(nextCategories);
+    setCategory(requestedCategory);
+    setNewCategory("");
+    showNotice("Kategorie wurde angelegt und ausgewählt.", "success");
   }
 
   function addImageFiles(files: FileList | File[]) {
@@ -595,6 +655,31 @@ export function NewsPage({
                     </option>
                   ))}
                 </Select>
+                {isAdmin ? (
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={newCategory}
+                      onChange={(event) => setNewCategory(event.target.value)}
+                      placeholder="Neue Kategorie"
+                      maxLength={80}
+                      aria-label="Neue Nachrichten-Kategorie"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addCategory}
+                      disabled={categoryLoading || !newCategory.trim()}
+                      className="w-full sm:w-auto"
+                    >
+                      {categoryLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      Hinzufügen
+                    </Button>
+                  </div>
+                ) : null}
               </Field>
             </div>
 

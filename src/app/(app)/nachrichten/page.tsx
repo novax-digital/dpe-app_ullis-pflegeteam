@@ -23,7 +23,11 @@ export default async function MessagesRoute() {
 
   const supabase = await createSupabaseServerClient();
   const [newsResult, settingsResult] = await Promise.all([
-    supabase.from("news").select("*").order("created_at", { ascending: false }),
+    supabase
+      .from("news")
+      .select("*")
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
     supabase
       .from("news_settings")
       .select("*")

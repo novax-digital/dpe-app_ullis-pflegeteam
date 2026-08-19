@@ -549,6 +549,13 @@ export type Database = {
     Functions: {
       complete_expired_ebike_reservations: { Args: never; Returns: undefined }
       complete_expired_health_courses: { Args: never; Returns: undefined }
+      get_health_course_registration_counts: {
+        Args: never
+        Returns: {
+          course_id: string
+          registration_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

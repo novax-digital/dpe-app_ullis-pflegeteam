@@ -47,6 +47,7 @@ export default async function PinboardPage() {
     supabase
       .from("news")
       .select("id, title, author_id, category, published, published_at, created_at")
+      .order("published_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(3),
     supabase
@@ -234,7 +235,8 @@ export default async function PinboardPage() {
                   {newsProfileById.get(item.author_id)?.full_name?.trim() ||
                     newsProfileById.get(item.author_id)?.email?.trim() ||
                     "Unbekannter Autor"}{" "}
-                  · {formatDateTime(item.published_at ?? item.created_at)}
+                  · {item.published_at ? "Veröffentlicht" : "Erstellt"} am{" "}
+                  {formatDateTime(item.published_at ?? item.created_at)}
                 </p>
               </div>
             ))}

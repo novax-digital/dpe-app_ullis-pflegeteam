@@ -117,9 +117,8 @@ export async function PATCH(
 
     const published = Boolean(body.published);
     updates.published = published;
-    updates.published_at = published
-      ? existing.published_at ?? new Date().toISOString()
-      : null;
+    updates.published_at = existing.published_at ??
+      (published ? new Date().toISOString() : null);
   }
 
   if (Object.keys(updates).length === 0 && !notificationRequested) {
