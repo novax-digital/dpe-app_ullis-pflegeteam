@@ -41,9 +41,7 @@ export default async function PinboardPage() {
       .gte("start_time", now.toISOString())
       .lte("start_time", in14Days.toISOString())
       .neq("status", "cancelled"),
-    primaryRole === "admin"
-      ? supabase.from("profiles").select("id", { count: "exact", head: true })
-      : Promise.resolve({ count: null }),
+    supabase.rpc("get_employee_count"),
     supabase
       .from("news")
       .select("id, title, author_id, category, published, published_at, created_at")
@@ -154,7 +152,7 @@ export default async function PinboardPage() {
         />
         <StatCard
           label="Mitarbeitende"
-          value={employeesResult.count ?? "-"}
+          value={employeesResult.data ?? "-"}
           icon={<Users className="h-5 w-5" />}
         />
         <StatCard
