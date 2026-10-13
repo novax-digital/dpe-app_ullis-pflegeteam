@@ -2,7 +2,6 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Bike, CalendarDays, HeartPulse, Newspaper, Users } from "lucide-react";
 import { Badge, Card } from "@/components/ui";
-import { ROLE_LABEL } from "@/lib/auth";
 import { getUserContext } from "@/lib/auth-server";
 import type { Database } from "@/lib/database.types";
 import { formatDateTime } from "@/lib/format";
@@ -13,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PinboardPage() {
   const supabase = await createSupabaseServerClient();
-  const { user, profile, primaryRole } = await getUserContext();
+  const { user, profile, roles, primaryRoleLabel } = await getUserContext();
 
   if (!user) {
     redirect("/login");
@@ -124,7 +123,7 @@ export default async function PinboardPage() {
         <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
           <div className="max-w-3xl space-y-3">
             <Badge tone="success">
-              {primaryRole ? ROLE_LABEL[primaryRole] : "Team"}
+              {primaryRoleLabel}
             </Badge>
             <div>
               <h1 className="text-3xl font-semibold tracking-normal text-foreground sm:text-4xl">
@@ -220,7 +219,7 @@ export default async function PinboardPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-medium">{item.title}</p>
-                  {primaryRole === "admin" ? (
+                  {roles.includes("admin") ? (
                     <Badge tone={item.published ? "success" : "neutral"}>
                       {item.published ? "Live" : "Entwurf"}
                     </Badge>

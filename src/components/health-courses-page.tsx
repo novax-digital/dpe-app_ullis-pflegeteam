@@ -47,9 +47,11 @@ import {
 } from "@/components/ui";
 import type { AppRole } from "@/lib/auth";
 import {
+  COURSE_IMAGE_BUCKET,
   COURSE_IMAGE_ACCEPTED_TYPES,
   COURSE_IMAGE_MAX_BYTES,
 } from "@/lib/course-images";
+import { uploadImageDirectly } from "@/lib/image-upload-client";
 import type { Database } from "@/lib/database.types";
 import { formatDate, formatTime, toDatetimeLocal } from "@/lib/format";
 import {
@@ -728,23 +730,12 @@ export function HealthCoursesPage({
   }
 
   async function uploadCourseImage(file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/admin/course-images", {
-      method: "POST",
-      body: formData,
+    return uploadImageDirectly({
+      supabase,
+      bucket: COURSE_IMAGE_BUCKET,
+      folder: "courses",
+      file,
     });
-    const data = (await response.json().catch(() => ({}))) as {
-      publicUrl?: string;
-      error?: string;
-    };
-
-    if (!response.ok || !data.publicUrl) {
-      throw new Error(data.error ?? "Das Bild konnte nicht hochgeladen werden.");
-    }
-
-    return data.publicUrl;
   }
 
   function closeCourseForm() {

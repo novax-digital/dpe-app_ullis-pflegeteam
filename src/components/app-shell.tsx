@@ -3,22 +3,23 @@ import { LogOut } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { AppNav } from "@/components/app-nav";
 import { Button } from "@/components/ui";
-import { ROLE_LABEL, type AppRole, type Profile } from "@/lib/auth";
+import { type AppRole, type Profile } from "@/lib/auth";
 
 export function AppShell({
   children,
   profile,
   roles,
-  primaryRole,
+  primaryRoleLabel,
+  customPages,
 }: {
   children: React.ReactNode;
   profile: Profile | null;
   roles: AppRole[];
-  primaryRole: AppRole | null;
+  primaryRoleLabel: string;
+  customPages: Array<{ id: string; slug: string; title: string }>;
 }) {
   const displayName =
     profile?.full_name?.trim() || profile?.email?.trim() || "Ullis Team";
-  const roleLabel = primaryRole ? ROLE_LABEL[primaryRole] : "Team";
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
@@ -38,12 +39,12 @@ export function AppShell({
           </div>
         </div>
 
-        <AppNav roles={roles} />
+        <AppNav roles={roles} customPages={customPages} />
 
         <div className="mt-auto space-y-3 border-t border-border pt-4">
           <div className="px-2">
             <p className="truncate text-sm font-medium">{displayName}</p>
-            <p className="text-xs text-muted-foreground">{roleLabel}</p>
+            <p className="text-xs text-muted-foreground">{primaryRoleLabel}</p>
           </div>
           <form action={signOut}>
             <Button
@@ -83,7 +84,11 @@ export function AppShell({
               </Button>
             </form>
           </div>
-          <AppNav roles={roles} orientation="subnav" />
+          <AppNav
+            roles={roles}
+            customPages={customPages}
+            orientation="subnav"
+          />
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 overflow-x-hidden px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-5 sm:px-6 lg:px-8 lg:py-8">
@@ -91,7 +96,11 @@ export function AppShell({
         </main>
 
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_24px_-20px_rgba(0,0,0,0.45)] backdrop-blur lg:hidden">
-          <AppNav roles={roles} orientation="bottom" />
+          <AppNav
+            roles={roles}
+            customPages={customPages}
+            orientation="bottom"
+          />
         </div>
       </div>
     </div>

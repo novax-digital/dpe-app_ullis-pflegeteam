@@ -13,16 +13,9 @@ import {
   Select,
 } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import type { Database } from "@/lib/database.types";
 
-const positions = [
-  "Pflegedienstleitung",
-  "Stellv. Pflegedienstleitung",
-  "Pflegefachkraft",
-  "Pflegehelfer:in",
-  "Verwaltung",
-  "Auszubildende:r",
-  "Sonstige",
-];
+type AppPosition = Database["public"]["Tables"]["app_positions"]["Row"];
 
 function passwordError(message: string) {
   const lower = message.toLowerCase();
@@ -40,15 +33,21 @@ export function ProfilePage({
   fullName,
   email,
   position,
+  positionDefinitions,
   isAdmin,
 }: {
   userId: string;
   fullName: string;
   email: string;
   position: string;
+  positionDefinitions: AppPosition[];
   isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const positions = useMemo(
+    () => positionDefinitions.map((item) => item.label),
+    [positionDefinitions],
+  );
   const [accountFullName, setAccountFullName] = useState(fullName);
   const [accountEmail, setAccountEmail] = useState(email);
   const [loginEmail, setLoginEmail] = useState(email);

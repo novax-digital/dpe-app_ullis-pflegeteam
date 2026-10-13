@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { AppRole } from "@/lib/auth";
-import { ROLE_LABEL } from "@/lib/auth";
 import {
   createAuthActionToken,
   type AuthEmailKind,
@@ -100,10 +99,12 @@ export async function sendInviteEmail({
   email,
   fullName,
   role,
+  roleLabel,
 }: {
   email: string;
   fullName: string;
   role: AppRole;
+  roleLabel?: string;
 }) {
   const actionUrl = authActionUrl({
     actionToken: createAuthActionToken(email, "invite"),
@@ -112,7 +113,7 @@ export async function sendInviteEmail({
   const recipientName = fullName.trim() || email;
   const template = authEmailTemplate({
     title: "Willkommen bei Ullis Connect",
-    intro: `Hallo ${recipientName}, dein Konto wurde angelegt. Richte jetzt dein Passwort ein und melde dich anschließend im Mitarbeiterportal an. Deine Rolle: ${ROLE_LABEL[role]}.`,
+    intro: `Hallo ${recipientName}, dein Konto wurde angelegt. Richte jetzt dein Passwort ein und melde dich anschließend im Mitarbeiterportal an. Deine Rolle: ${roleLabel ?? role}.`,
     buttonLabel: "Passwort einrichten",
     actionUrl,
     footer:

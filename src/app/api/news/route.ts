@@ -22,6 +22,17 @@ function imageUrlsValue(value: unknown) {
     .slice(0, 12);
 }
 
+function roleValues(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((role) => (typeof role === "string" ? role.trim() : ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 50);
+}
+
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -51,6 +62,7 @@ export async function POST(request: Request) {
   const title = textValue(body.title, 180);
   const content = textValue(body.content, 12000);
   const notificationRequested = Boolean(body.send_notification);
+  const audienceRoles = roleValues(body.audience_roles);
 
   if (!title) {
     return errorResponse("Titel ist erforderlich.", 400);
@@ -74,6 +86,30 @@ export async function POST(request: Request) {
     );
   }
 
+  if (notificationRequested && audienceRoles.length === 0) {
+    return errorResponse(
+      "Für den E-Mail-Versand muss mindestens eine Empfängerrolle ausgewählt sein.",
+      400,
+    );
+  }
+
+  if (audienceRoles.length > 0 && !authorIsAdmin) {
+    return errorResponse(
+      "Nur Administrator:innen dürfen Empfängerrollen auswählen.",
+      403,
+    );
+  }
+
+  if (audienceRoles.length > 0) {
+    const { data: validRoles } = await admin
+      .from("app_roles")
+      .select("key")
+      .in("key", audienceRoles);
+    if ((validRoles ?? []).length !== audienceRoles.length) {
+      return errorResponse("Mindestens eine Empfängerrolle ist ungültig.", 400);
+    }
+  }
+
   const author =
     profile?.full_name?.trim() ||
     profile?.email?.trim() ||
@@ -89,6 +125,7 @@ export async function POST(request: Request) {
       category: nullableTextValue(body.category, 80),
       excerpt: nullableTextValue(body.excerpt, 260),
       image_urls: imageUrlsValue(body.image_urls),
+      audience_roles: audienceRoles,
       published: true,
       published_at: now,
     })

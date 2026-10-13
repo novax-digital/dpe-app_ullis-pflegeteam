@@ -12,7 +12,6 @@ import {
 
 type AdminClient = SupabaseClient<Database>;
 type NewsItem = Database["public"]["Tables"]["news"]["Row"];
-type AppRole = Database["public"]["Enums"]["app_role"];
 
 export type NewsNotificationResult = {
   sent: boolean;
@@ -22,7 +21,6 @@ export type NewsNotificationResult = {
 };
 
 const maxRecipientsPerEmail = 50;
-const notificationRoles: AppRole[] = ["admin", "employee", "physiotherapy"];
 
 function messageUrl(item: NewsItem) {
   try {
@@ -71,17 +69,34 @@ function chunks<T>(items: T[], size: number) {
   return result;
 }
 
-async function employeeRecipients(admin: AdminClient) {
-  const { data: roleRows, error: roleError } = await admin
-    .from("user_roles")
-    .select("user_id")
-    .in("role", notificationRoles);
+async function employeeRecipients(
+  admin: AdminClient,
+  audienceRoles: string[],
+) {
+  const [{ data: roleRows, error: roleError }, { data: roleDefinitions }] =
+    await Promise.all([
+      admin.from("user_roles").select("user_id, role"),
+      admin.from("app_roles").select("key, base_role"),
+    ]);
 
   if (roleError) {
     return { recipients: [], error: roleError.message };
   }
 
-  const userIds = Array.from(new Set((roleRows ?? []).map((row) => row.user_id)));
+  const baseRoleByKey = new Map(
+    (roleDefinitions ?? []).map((role) => [role.key, role.base_role]),
+  );
+  const targetedRows =
+    audienceRoles.length === 0
+      ? (roleRows ?? [])
+      : (roleRows ?? []).filter(
+          (row) =>
+            audienceRoles.includes(row.role) ||
+            audienceRoles.includes(baseRoleByKey.get(row.role) ?? ""),
+        );
+  const userIds = Array.from(
+    new Set(targetedRows.map((row) => row.user_id)),
+  );
   if (userIds.length === 0) {
     return { recipients: [] };
   }
@@ -235,7 +250,10 @@ export async function sendAdminNewsNotification({
     };
   }
 
-  const { recipients: employeeEmails, error } = await employeeRecipients(admin);
+  const { recipients: employeeEmails, error } = await employeeRecipients(
+    admin,
+    item.audience_roles ?? [],
+  );
   if (error) {
     return {
       sent: false,
@@ -252,7 +270,8 @@ export async function sendAdminNewsNotification({
     return {
       sent: false,
       recipientCount: 0,
-      skippedReason: "Es sind keine Mitarbeiter-E-Mail-Adressen hinterlegt.",
+      skippedReason:
+        "Für die ausgewählten Empfängerrollen sind keine E-Mail-Adressen hinterlegt.",
     };
   }
 

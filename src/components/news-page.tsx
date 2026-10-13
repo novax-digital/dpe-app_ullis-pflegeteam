@@ -33,6 +33,7 @@ import {
   Star,
   Trash2,
   UserRound,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -49,11 +50,14 @@ import {
   Textarea,
 } from "@/components/ui";
 import type { Database } from "@/lib/database.types";
+import type { AppRoleDefinition } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import {
+  NEWS_IMAGE_BUCKET,
   NEWS_IMAGE_ACCEPTED_TYPES,
   NEWS_IMAGE_MAX_BYTES,
 } from "@/lib/news-images";
+import { uploadImageDirectly } from "@/lib/image-upload-client";
 import {
   normalizeNewsCategoryList,
   normalizeNewsSettings,
@@ -122,12 +126,14 @@ export function NewsPage({
   initialItems,
   initialProfiles,
   initialCategories,
+  roleDefinitions,
   isAdmin,
   userId,
 }: {
   initialItems: NewsItem[];
   initialProfiles: Profile[];
   initialCategories: string[];
+  roleDefinitions: AppRoleDefinition[];
   isAdmin: boolean;
   userId: string;
 }) {
@@ -144,6 +150,7 @@ export function NewsPage({
   const [excerpt, setExcerpt] = useState("");
   const [content, setContent] = useState("");
   const [sendNotification, setSendNotification] = useState(false);
+  const [audienceRoles, setAudienceRoles] = useState<string[]>([]);
   const [imageEntries, setImageEntries] = useState<NewsImageEntry[]>([]);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -160,12 +167,18 @@ export function NewsPage({
     profiles.forEach((profile) => map.set(profile.id, profile));
     return map;
   }, [profiles]);
+  const roleLabelByKey = useMemo(
+    () => new Map(roleDefinitions.map((role) => [role.key, role.label])),
+    [roleDefinitions],
+  );
 
   const visibleItems = isAdmin
     ? items
     : items.filter((item) => item.published);
   const notificationAlreadySent = Boolean(editing?.notification_sent_at);
   const canRequestNotification = isAdmin && !notificationAlreadySent;
+  const canSendNotification =
+    canRequestNotification && audienceRoles.length > 0;
 
   useEffect(() => {
     return () => {
@@ -218,6 +231,7 @@ export function NewsPage({
     setShowForm(false);
     setEditing(null);
     setSendNotification(false);
+    setAudienceRoles([]);
     setNewCategory("");
   }
 
@@ -235,7 +249,7 @@ export function NewsPage({
 
     if (
       notification.skippedReason?.includes("RESEND") ||
-      notification.skippedReason?.includes("keine Mitarbeiter-E-Mail")
+      notification.skippedReason?.includes("keine E-Mail-Adressen")
     ) {
       return `Nachricht gespeichert, Mailversand ausgelassen: ${notification.skippedReason}`;
     }
@@ -255,6 +269,7 @@ export function NewsPage({
     setExcerpt("");
     setContent("");
     setSendNotification(false);
+    setAudienceRoles([]);
     setNewCategory("");
     setImageEntries([]);
     setShowForm(true);
@@ -270,6 +285,7 @@ export function NewsPage({
     setExcerpt(item.excerpt ?? "");
     setContent(item.content);
     setSendNotification(false);
+    setAudienceRoles(item.audience_roles ?? []);
     setNewCategory("");
     setImageEntries(
       (item.image_urls ?? []).map((url, index) => ({
@@ -412,23 +428,12 @@ export function NewsPage({
   }
 
   async function uploadNewsImage(file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/news-images", {
-      method: "POST",
-      body: formData,
+    return uploadImageDirectly({
+      supabase,
+      bucket: NEWS_IMAGE_BUCKET,
+      folder: "news",
+      file,
     });
-    const data = (await response.json().catch(() => ({}))) as {
-      publicUrl?: string;
-      error?: string;
-    };
-
-    if (!response.ok || !data.publicUrl) {
-      throw new Error(data.error ?? "Das Bild konnte nicht hochgeladen werden.");
-    }
-
-    return data.publicUrl;
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -462,7 +467,8 @@ export function NewsPage({
         excerpt: excerpt.trim() || null,
         content: content.trim(),
         image_urls: nextImageUrls,
-        send_notification: canRequestNotification && sendNotification,
+        ...(isAdmin ? { audience_roles: audienceRoles } : {}),
+        send_notification: canSendNotification && sendNotification,
       };
 
       const response = await fetch(
@@ -540,6 +546,14 @@ export function NewsPage({
             : "neutral",
       );
     }
+  }
+
+  function toggleAudienceRole(role: string) {
+    setAudienceRoles((current) =>
+      current.includes(role)
+        ? current.filter((item) => item !== role)
+        : [...current, role],
+    );
   }
 
   function remove(item: NewsItem) {
@@ -706,17 +720,59 @@ export function NewsPage({
             </Field>
 
             {isAdmin ? (
+              <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
+                <div>
+                  <Label>Empfängerrollen</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Nur ausgewählte Rollen sehen die Nachricht und erhalten auf
+                    Wunsch eine E-Mail. Ohne Auswahl geht sie an alle Rollen.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAudienceRoles([])}
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition",
+                      audienceRoles.length === 0
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card hover:bg-muted",
+                    )}
+                  >
+                    <Users className="h-4 w-4" />
+                    Alle Rollen
+                  </button>
+                  {roleDefinitions.map((role) => (
+                    <button
+                      key={role.key}
+                      type="button"
+                      onClick={() => toggleAudienceRole(role.key)}
+                      className={cn(
+                        "rounded-md border px-3 py-2 text-sm font-medium transition",
+                        audienceRoles.includes(role.key)
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card hover:bg-muted",
+                      )}
+                    >
+                      {role.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {isAdmin ? (
               <label
                 className={cn(
                   "flex flex-col gap-3 rounded-md border border-border bg-muted/35 p-4 text-sm sm:flex-row sm:items-center sm:justify-between",
-                  notificationAlreadySent ? "opacity-75" : "",
+                  !canSendNotification ? "opacity-75" : "",
                 )}
               >
                 <span className="flex min-w-0 items-start gap-3">
                   <input
                     type="checkbox"
-                    checked={sendNotification && canRequestNotification}
-                    disabled={!canRequestNotification}
+                    checked={sendNotification && canSendNotification}
+                    disabled={!canSendNotification}
                     onChange={(event) =>
                       setSendNotification(event.target.checked)
                     }
@@ -725,11 +781,12 @@ export function NewsPage({
                   <span className="min-w-0">
                     <span className="flex items-center gap-2 font-medium">
                       <Send className="h-4 w-4 text-primary" />
-                      Per E-Mail an alle Mitarbeiter:innen senden
+                      Per E-Mail an die Empfängerrollen senden
                     </span>
                     <span className="mt-1 block text-muted-foreground">
-                      Verschickt eine einmalige Benachrichtigung mit Titel,
-                      kurzem Auszug und Link zur News.
+                      {audienceRoles.length === 0
+                        ? "Wähle oben mindestens eine Rolle aus. Ein Versand an alle Rollen ist bewusst deaktiviert."
+                        : "Verschickt eine einmalige Benachrichtigung nur an die oben ausgewählten Rollen."}
                     </span>
                   </span>
                 </span>
@@ -909,6 +966,14 @@ export function NewsPage({
                       {item.category ? (
                         <Badge tone="info">{item.category}</Badge>
                       ) : null}
+                      {isAdmin && item.audience_roles.length > 0 ? (
+                        <Badge>
+                          <Users className="mr-1 h-3 w-3" />
+                          {item.audience_roles
+                            .map((role) => roleLabelByKey.get(role) ?? role)
+                            .join(", ")}
+                        </Badge>
+                      ) : null}
                       {item.image_urls.length > 1 ? (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Images className="h-3.5 w-3.5" />
@@ -1003,6 +1068,14 @@ export function NewsPage({
                       {featured ? <Badge tone="info">Neu</Badge> : null}
                       {item.category ? (
                         <Badge tone="info">{item.category}</Badge>
+                      ) : null}
+                      {isAdmin && item.audience_roles.length > 0 ? (
+                        <Badge>
+                          <Users className="mr-1 h-3 w-3" />
+                          {item.audience_roles
+                            .map((role) => roleLabelByKey.get(role) ?? role)
+                            .join(", ")}
+                        </Badge>
                       ) : null}
                     </div>
                     <Link href={`/nachrichten/${item.id}`} className="block">

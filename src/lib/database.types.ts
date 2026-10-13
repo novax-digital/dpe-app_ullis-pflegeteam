@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_positions: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      app_roles: {
+        Row: {
+          base_role: Database["public"]["Enums"]["app_role"]
+          created_at: string
+          is_system: boolean
+          key: string
+          label: string
+          updated_at: string
+        }
+        Insert: {
+          base_role?: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          is_system?: boolean
+          key: string
+          label: string
+          updated_at?: string
+        }
+        Update: {
+          base_role?: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          is_system?: boolean
+          key?: string
+          label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       calendar_events: {
         Row: {
           all_day: boolean
@@ -114,6 +165,86 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      custom_page_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          mime_type: string
+          page_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          mime_type?: string
+          page_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          page_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_page_files_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "custom_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_pages: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          published: boolean
+          slug: string
+          sort_order: number
+          summary: string | null
+          title: string
+          updated_at: string
+          visible_to_roles: string[]
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          created_by: string
+          id?: string
+          published?: boolean
+          slug: string
+          sort_order?: number
+          summary?: string | null
+          title: string
+          updated_at?: string
+          visible_to_roles?: string[]
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          published?: boolean
+          slug?: string
+          sort_order?: number
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          visible_to_roles?: string[]
+        }
+        Relationships: []
       }
       documents: {
         Row: {
@@ -398,6 +529,7 @@ export type Database = {
       }
       news: {
         Row: {
+          audience_roles: string[]
           author_id: string
           category: string | null
           content: string
@@ -412,6 +544,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          audience_roles?: string[]
           author_id: string
           category?: string | null
           content?: string
@@ -426,6 +559,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          audience_roles?: string[]
           author_id?: string
           category?: string | null
           content?: string
@@ -525,19 +659,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: string
           user_id?: string
         }
         Relationships: []
@@ -559,7 +693,14 @@ export type Database = {
       get_employee_count: { Args: never; Returns: number }
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
+          _role: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      has_any_role: {
+        Args: {
+          _roles: string[]
           _user_id: string
         }
         Returns: boolean

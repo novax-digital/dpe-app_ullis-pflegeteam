@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
-import type { AppRole } from "@/lib/auth";
 import { emailAppUrl } from "@/lib/app-url";
 import { sendInviteEmail } from "@/lib/auth-emails";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-const allowedRoles: AppRole[] = ["admin", "employee", "physiotherapy"];
 
 async function requireAdmin() {
   const supabase = await createSupabaseServerClient();
@@ -60,7 +57,7 @@ export async function POST(request: Request) {
   const email = String(body.email ?? "").trim().toLowerCase();
   const fullName = String(body.full_name ?? "").trim();
   const position = String(body.position ?? "").trim();
-  const role = String(body.role ?? "employee") as AppRole;
+  const role = String(body.role ?? "employee").trim();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
@@ -73,7 +70,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name ist erforderlich." }, { status: 400 });
   }
 
-  if (!allowedRoles.includes(role)) {
+  if (position) {
+    const { data: positionDefinition } = await admin
+      .from("app_positions")
+      .select("id")
+      .ilike("label", position)
+      .maybeSingle();
+    if (!positionDefinition) {
+      return NextResponse.json(
+        { error: "Ungültige Berufsbezeichnung." },
+        { status: 400 },
+      );
+    }
+  }
+
+  const { data: roleDefinition } = await admin
+    .from("app_roles")
+    .select("key, label")
+    .eq("key", role)
+    .maybeSingle();
+
+  if (!roleDefinition) {
     return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
   }
 
@@ -116,6 +133,7 @@ export async function POST(request: Request) {
       email,
       fullName,
       role,
+      roleLabel: roleDefinition.label,
     });
   } catch (error) {
     return NextResponse.json(
@@ -151,7 +169,8 @@ export async function PATCH(request: Request) {
   const email = String(body.email ?? "").trim().toLowerCase();
   const fullName = String(body.full_name ?? "").trim();
   const position = String(body.position ?? "").trim();
-  const role = String(body.role ?? "") as AppRole;
+  const role = String(body.role ?? "").trim();
+  const shouldUpdateRole = role.length > 0;
 
   if (!userId) {
     return NextResponse.json({ error: "Benutzer-ID fehlt." }, { status: 400 });
@@ -165,11 +184,33 @@ export async function PATCH(request: Request) {
       { status: 400 },
     );
   }
-  if (!allowedRoles.includes(role)) {
-    return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
+
+  if (position) {
+    const { data: positionDefinition } = await auth.admin
+      .from("app_positions")
+      .select("id")
+      .ilike("label", position)
+      .maybeSingle();
+    if (!positionDefinition) {
+      return NextResponse.json(
+        { error: "Ungültige Berufsbezeichnung." },
+        { status: 400 },
+      );
+    }
   }
 
-  if (userId === auth.user.id && role !== "admin") {
+  if (shouldUpdateRole) {
+    const { data: roleDefinition } = await auth.admin
+      .from("app_roles")
+      .select("key")
+      .eq("key", role)
+      .maybeSingle();
+    if (!roleDefinition) {
+      return NextResponse.json({ error: "Ungültige Rolle." }, { status: 400 });
+    }
+  }
+
+  if (shouldUpdateRole && userId === auth.user.id && role !== "admin") {
     return NextResponse.json(
       { error: "Die eigene Admin-Rolle kann hier nicht geändert werden." },
       { status: 400 },
@@ -226,31 +267,33 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const { error: roleInsertError } = await auth.admin
-    .from("user_roles")
-    .upsert(
-      { user_id: userId, role },
-      { onConflict: "user_id,role", ignoreDuplicates: true },
-    );
+  if (shouldUpdateRole) {
+    const { error: roleInsertError } = await auth.admin
+      .from("user_roles")
+      .upsert(
+        { user_id: userId, role },
+        { onConflict: "user_id,role", ignoreDuplicates: true },
+      );
 
-  if (roleInsertError) {
-    return NextResponse.json(
-      { error: `Rolle konnte nicht aktualisiert werden: ${roleInsertError.message}` },
-      { status: 400 },
-    );
-  }
+    if (roleInsertError) {
+      return NextResponse.json(
+        { error: `Rolle konnte nicht aktualisiert werden: ${roleInsertError.message}` },
+        { status: 400 },
+      );
+    }
 
-  const { error: oldRolesError } = await auth.admin
-    .from("user_roles")
-    .delete()
-    .eq("user_id", userId)
-    .neq("role", role);
+    const { error: oldRolesError } = await auth.admin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", userId)
+      .neq("role", role);
 
-  if (oldRolesError) {
-    return NextResponse.json(
-      { error: `Alte Rolle konnte nicht entfernt werden: ${oldRolesError.message}` },
-      { status: 400 },
-    );
+    if (oldRolesError) {
+      return NextResponse.json(
+        { error: `Alte Rolle konnte nicht entfernt werden: ${oldRolesError.message}` },
+        { status: 400 },
+      );
+    }
   }
 
   return NextResponse.json({ success: true });

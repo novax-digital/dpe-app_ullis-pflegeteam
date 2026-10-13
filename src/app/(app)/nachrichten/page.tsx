@@ -22,7 +22,7 @@ export default async function MessagesRoute() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [newsResult, settingsResult] = await Promise.all([
+  const [newsResult, settingsResult, rolesResult] = await Promise.all([
     supabase
       .from("news")
       .select("*")
@@ -33,6 +33,11 @@ export default async function MessagesRoute() {
       .select("*")
       .eq("id", "default")
       .maybeSingle(),
+    supabase
+      .from("app_roles")
+      .select("*")
+      .order("is_system", { ascending: false })
+      .order("label", { ascending: true }),
   ]);
   const items = newsResult.data ?? [];
   const authorIds = Array.from(new Set(items.map((item) => item.author_id)));
@@ -63,6 +68,7 @@ export default async function MessagesRoute() {
       initialItems={items}
       initialProfiles={profiles}
       initialCategories={normalizeNewsSettings(settingsResult.data).categories}
+      roleDefinitions={rolesResult.data ?? []}
       isAdmin={context.roles.includes("admin")}
       userId={context.user.id}
     />

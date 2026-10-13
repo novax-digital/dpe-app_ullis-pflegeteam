@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bike,
+  BookOpenText,
+  BriefcaseBusiness,
   CalendarDays,
   FileText,
   HeartPulse,
@@ -17,7 +19,18 @@ import type { AppRole } from "@/lib/auth";
 import { hasAllowedRole } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+type NavChild = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  roles?: AppRole[];
+};
+
+type NavItem = NavChild & {
+  children?: NavChild[];
+};
+
+const baseNavItems: NavItem[] = [
   {
     href: "/",
     label: "Pinnwand",
@@ -121,6 +134,24 @@ const navItems = [
         icon: HeartPulse,
         roles: ["admin"] as AppRole[],
       },
+      {
+        href: "/settings/rollen",
+        label: "Rollen",
+        icon: Users,
+        roles: ["admin"] as AppRole[],
+      },
+      {
+        href: "/settings/berufsbezeichnungen",
+        label: "Berufsbezeichnungen",
+        icon: BriefcaseBusiness,
+        roles: ["admin"] as AppRole[],
+      },
+      {
+        href: "/settings/seiten",
+        label: "Seiten",
+        icon: BookOpenText,
+        roles: ["admin"] as AppRole[],
+      },
     ],
   },
 ];
@@ -129,12 +160,30 @@ type AppNavOrientation = "vertical" | "horizontal" | "bottom" | "subnav";
 
 export function AppNav({
   roles,
+  customPages = [],
   orientation = "vertical",
 }: {
   roles: AppRole[];
+  customPages?: Array<{ id: string; slug: string; title: string }>;
   orientation?: AppNavOrientation;
 }) {
   const pathname = usePathname();
+  const navItems: NavItem[] = customPages.length
+    ? [
+        ...baseNavItems.slice(0, 6),
+        {
+          href: "/seiten",
+          label: "Teamseiten",
+          icon: BookOpenText,
+          children: customPages.map((page) => ({
+            href: `/seiten/${page.slug}`,
+            label: page.title,
+            icon: FileText,
+          })),
+        },
+        ...baseNavItems.slice(6),
+      ]
+    : baseNavItems;
   const visibleItems = navItems.filter((item) =>
     hasAllowedRole(roles, item.roles),
   );
@@ -144,9 +193,9 @@ export function AppNav({
   if (orientation === "subnav") {
     const activeItem = visibleItems.find((item) => isActive(item.href));
     const visibleChildItems =
-      activeItem && "children" in activeItem
-        ? activeItem.children?.filter((child) =>
-            "roles" in child ? hasAllowedRole(roles, child.roles) : true,
+      activeItem?.children
+        ? activeItem.children.filter((child) =>
+            hasAllowedRole(roles, child.roles),
           )
         : undefined;
 
@@ -198,11 +247,9 @@ export function AppNav({
         const Icon = item.icon;
         const active = isActive(item.href);
         const childItems =
-          active && orientation !== "bottom" && "children" in item
-            ? item.children
-            : undefined;
+          active && orientation !== "bottom" ? item.children : undefined;
         const visibleChildItems = childItems?.filter((child) =>
-          "roles" in child ? hasAllowedRole(roles, child.roles) : true,
+          hasAllowedRole(roles, child.roles),
         );
 
         return (

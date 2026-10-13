@@ -177,7 +177,7 @@ export function PageHeader({
           {title}
         </h1>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="max-w-full shrink-0">{action}</div> : null}
     </div>
   );
 }

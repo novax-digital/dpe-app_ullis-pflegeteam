@@ -6,6 +6,8 @@ import { FormEvent, useMemo, useState } from "react";
 import {
   Bell,
   Bike,
+  BookOpenText,
+  BriefcaseBusiness,
   CalendarDays,
   HeartPulse,
   ListChecks,
@@ -16,6 +18,7 @@ import {
   Save,
   ShieldCheck,
   Tags,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -85,9 +88,27 @@ const settingsItems = [
     icon: HeartPulse,
     adminOnly: true,
   },
+  {
+    href: "/settings/rollen",
+    label: "Rollen",
+    icon: Users,
+    adminOnly: true,
+  },
+  {
+    href: "/settings/berufsbezeichnungen",
+    label: "Berufsbezeichnungen",
+    icon: BriefcaseBusiness,
+    adminOnly: true,
+  },
+  {
+    href: "/settings/seiten",
+    label: "Seiten",
+    icon: BookOpenText,
+    adminOnly: true,
+  },
 ];
 
-function SettingsSectionNav({
+export function SettingsSectionNav({
   isAdmin,
 }: {
   isAdmin: boolean;
@@ -98,7 +119,7 @@ function SettingsSectionNav({
   );
 
   return (
-    <div className="inline-flex rounded-md border border-border bg-card p-1">
+    <div className="flex max-w-full flex-wrap rounded-md border border-border bg-card p-1">
       {visibleItems.map((item) => {
         const Icon = item.icon;
         const active =

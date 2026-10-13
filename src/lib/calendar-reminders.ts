@@ -14,7 +14,6 @@ import { normalizeCalendarSettings } from "@/lib/calendar-settings";
 
 type AdminClient = SupabaseClient<Database>;
 type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
-type AppRole = Database["public"]["Enums"]["app_role"];
 
 export type CalendarReminderResult = {
   sent: boolean;
@@ -25,7 +24,7 @@ export type CalendarReminderResult = {
 };
 
 const maxRecipientsPerEmail = 50;
-const reminderRoles: AppRole[] = ["admin", "employee"];
+const reminderRoles = ["admin", "employee"];
 
 function escapeHtml(value: string) {
   return value
@@ -64,16 +63,30 @@ function eventPreview(event: CalendarEvent) {
 }
 
 async function calendarReminderRecipients(admin: AdminClient) {
-  const { data: roleRows, error: roleError } = await admin
-    .from("user_roles")
-    .select("user_id")
-    .in("role", reminderRoles);
+  const [{ data: roleRows, error: roleError }, { data: roleDefinitions }] =
+    await Promise.all([
+      admin.from("user_roles").select("user_id, role"),
+      admin.from("app_roles").select("key, base_role"),
+    ]);
 
   if (roleError) {
     return { recipients: [], error: roleError.message };
   }
 
-  const userIds = Array.from(new Set((roleRows ?? []).map((row) => row.user_id)));
+  const baseRoleByKey = new Map(
+    (roleDefinitions ?? []).map((role) => [role.key, role.base_role]),
+  );
+  const userIds = Array.from(
+    new Set(
+      (roleRows ?? [])
+        .filter(
+          (row) =>
+            reminderRoles.includes(row.role) ||
+            reminderRoles.includes(baseRoleByKey.get(row.role) ?? ""),
+        )
+        .map((row) => row.user_id),
+    ),
+  );
   if (userIds.length === 0) {
     return { recipients: [] };
   }

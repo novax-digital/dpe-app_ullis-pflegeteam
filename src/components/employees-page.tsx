@@ -14,36 +14,41 @@ import {
   PageHeader,
   Select,
 } from "@/components/ui";
-import { primaryRoleFrom, ROLE_LABEL, type AppRole } from "@/lib/auth";
+import {
+  primaryRoleFrom,
+  roleLabel,
+  type AppRole,
+  type AppRoleDefinition,
+} from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { formatDate } from "@/lib/format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type UserRole = Database["public"]["Tables"]["user_roles"]["Row"];
-
-const positions = [
-  "Pflegedienstleitung",
-  "Stellv. Pflegedienstleitung",
-  "Pflegefachkraft",
-  "Pflegehelfer:in",
-  "Verwaltung",
-  "Auszubildende:r",
-  "Sonstige",
-];
-
-const roleOptions: AppRole[] = ["employee", "admin", "physiotherapy"];
+type AppPosition = Database["public"]["Tables"]["app_positions"]["Row"];
 
 export function EmployeesPage({
   initialProfiles,
   initialRoles,
+  roleDefinitions,
+  positionDefinitions,
   currentUserId,
 }: {
   initialProfiles: Profile[];
   initialRoles: UserRole[];
+  roleDefinitions: AppRoleDefinition[];
+  positionDefinitions: AppPosition[];
   currentUserId: string;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const positions = useMemo(
+    () => positionDefinitions.map((item) => item.label),
+    [positionDefinitions],
+  );
+  const defaultPosition = positions.includes("Pflegefachkraft")
+    ? "Pflegefachkraft"
+    : (positions[0] ?? "");
   const [profiles, setProfiles] = useState(initialProfiles);
   const [roles, setRoles] = useState(initialRoles);
   const [message, setMessage] = useState<string | null>(null);
@@ -52,7 +57,7 @@ export function EmployeesPage({
   const [showForm, setShowForm] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [position, setPosition] = useState(positions[2]);
+  const [position, setPosition] = useState(defaultPosition);
   const [role, setRole] = useState<AppRole>("employee");
   const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -89,7 +94,7 @@ export function EmployeesPage({
   function resetForm() {
     setFullName("");
     setEmail("");
-    setPosition(positions[2]);
+    setPosition(defaultPosition);
     setRole("employee");
   }
 
@@ -262,6 +267,7 @@ export function EmployeesPage({
                   value={position}
                   onChange={(event) => setPosition(event.target.value)}
                 >
+                  <option value="">Keine Angabe</option>
                   {positions.map((item) => (
                     <option key={item} value={item}>
                       {item}
@@ -276,9 +282,9 @@ export function EmployeesPage({
                   value={role}
                   onChange={(event) => setRole(event.target.value as AppRole)}
                 >
-                  {roleOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {ROLE_LABEL[item]}
+                  {roleDefinitions.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label}
                     </option>
                   ))}
                 </Select>
@@ -359,9 +365,9 @@ export function EmployeesPage({
                     setEditRole(event.target.value as AppRole)
                   }
                 >
-                  {roleOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {ROLE_LABEL[item]}
+                  {roleDefinitions.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label}
                     </option>
                   ))}
                 </Select>
@@ -418,7 +424,9 @@ export function EmployeesPage({
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {(rolesByUser.get(profile.id) ?? []).map((item) => (
-                        <Badge key={item}>{ROLE_LABEL[item]}</Badge>
+                        <Badge key={item}>
+                          {roleLabel(item, roleDefinitions)}
+                        </Badge>
                       ))}
                     </div>
                   </td>

@@ -22,6 +22,17 @@ function imageUrlsValue(value: unknown) {
     .slice(0, 12);
 }
 
+function roleValues(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((role) => (typeof role === "string" ? role.trim() : ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 50);
+}
+
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -75,6 +86,7 @@ export async function PATCH(
     category?: string | null;
     excerpt?: string | null;
     image_urls?: string[];
+    audience_roles?: string[];
     published?: boolean;
     published_at?: string | null;
   } = {};
@@ -108,6 +120,36 @@ export async function PATCH(
 
   if ("image_urls" in body) {
     updates.image_urls = imageUrlsValue(body.image_urls);
+  }
+
+  if ("audience_roles" in body) {
+    if (!isAdmin) {
+      return errorResponse(
+        "Nur Administrator:innen dürfen Empfängerrollen auswählen.",
+        403,
+      );
+    }
+    const audienceRoles = roleValues(body.audience_roles);
+    if (audienceRoles.length > 0) {
+      const { data: validRoles } = await admin
+        .from("app_roles")
+        .select("key")
+        .in("key", audienceRoles);
+      if ((validRoles ?? []).length !== audienceRoles.length) {
+        return errorResponse("Mindestens eine Empfängerrolle ist ungültig.", 400);
+      }
+    }
+    updates.audience_roles = audienceRoles;
+  }
+
+  if (
+    notificationRequested &&
+    (updates.audience_roles ?? existing.audience_roles ?? []).length === 0
+  ) {
+    return errorResponse(
+      "Für den E-Mail-Versand muss mindestens eine Empfängerrolle ausgewählt sein.",
+      400,
+    );
   }
 
   if ("published" in body) {
