@@ -1,19 +1,35 @@
-import { format, formatDistanceToNowStrict } from "date-fns";
+import { formatDistanceToNowStrict } from "date-fns";
 import { de } from "date-fns/locale";
+
+// Use the team's timezone on the server and in the browser, including DST.
+const timeZone = "Europe/Berlin";
+const dateFormatter = new Intl.DateTimeFormat("de-DE", {
+  timeZone,
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const timeFormatter = new Intl.DateTimeFormat("de-DE", {
+  timeZone,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 export function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
-  return format(new Date(value), "dd.MM.yyyy, HH:mm", { locale: de });
+  const date = new Date(value);
+  return `${dateFormatter.format(date)}, ${timeFormatter.format(date)}`;
 }
 
 export function formatDate(value: string | null | undefined) {
   if (!value) return "-";
-  return format(new Date(value), "dd.MM.yyyy", { locale: de });
+  return dateFormatter.format(new Date(value));
 }
 
 export function formatTime(value: string | null | undefined) {
   if (!value) return "-";
-  return format(new Date(value), "HH:mm", { locale: de });
+  return timeFormatter.format(new Date(value));
 }
 
 export function formatRelative(value: string | null | undefined) {
